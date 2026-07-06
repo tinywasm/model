@@ -1,4 +1,4 @@
-# model
+# tinywasm/model
 <img src="docs/img/badges.svg">
 
 Core schema, validation, and codec types for tinywasm ecosystem. This package provides the foundational interfaces and types used across ORM, JSON serialization, form handling, and API layers.
