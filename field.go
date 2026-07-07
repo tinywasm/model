@@ -56,6 +56,19 @@ type FieldDB struct {
 // Validation rules are embedded via Permitted. When a field has validation
 // configured, Field.Validate(value) checks the value against all rules.
 // Fields without validation rules pass any value.
+//
+// Deterministic Field.Type → Go type mapping:
+//
+// | Field.Type | Go Type |
+// |---|---|
+// | FieldText, FieldRaw | string |
+// | FieldInt | int64 |
+// | FieldFloat | float64 |
+// | FieldBool | bool |
+// | FieldBlob | []byte |
+// | FieldIntSlice | []int |
+// | FieldStruct | Ref type (required) |
+// | FieldStructSlice | [] of Ref type (required) |
 type Field struct {
 	Name      string
 	Type      FieldType
@@ -63,6 +76,7 @@ type Field struct {
 	OmitEmpty bool     // omit from JSON when zero value
 	Widget    Widget   // ← NEW: set by ormc from `input:` tag. nil = no UI binding.
 	DB        *FieldDB // nil for formonly/transport structs
+	Ref       *Definition // only for FieldStruct / FieldStructSlice: points to the nested Definition.
 	Permitted          // embedded: validation rules (characters, min/max)
 }
 

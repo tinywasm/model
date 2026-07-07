@@ -28,6 +28,35 @@ Returns the string representation of the `FieldType`.
 model.FieldInt.String() // returns "int"
 ```
 
+## Definition
+
+`Definition` is the hand-written, fully-typed source of truth for a model. From a `Definition`, the `ormc` generator produces the concrete Go struct and its zero-reflection plumbing.
+
+This inverts the previous flow (struct + string tags → generated schema): the schema literal is now authored by hand and everything else is derived.
+
+```go
+type Definition struct {
+    Name   string // model identity: table name, ModelName(), route key
+    Fields Fields // ordered schema; widgets come from any model.Widget (e.g. form/input)
+}
+```
+
+### Fields Alias
+
+`Fields` is an alias for `[]Field`, allowing literals to be assigned without conversion.
+
+```go
+type Fields = []Field
+```
+
+### Definition.Field()
+
+Returns the field with the given name and `true`, or a zero `Field` and `false`.
+
+```go
+field, ok := UserModel.Field("email")
+```
+
 ## Field
 
 `Field` describes a single field in a struct's schema with its metadata, constraints, and validation rules.
@@ -37,12 +66,28 @@ type Field struct {
     Name      string
     Type      FieldType
     NotNull   bool
-    OmitEmpty bool      // omit from JSON when zero value
-    Widget    Widget    // semantic input type; nil = no UI binding (set by ormc from `input:` tag)
-    DB        *FieldDB  // nil for formonly/transport structs
-    Permitted           // embedded: validation rules (characters, min/max)
+    OmitEmpty bool        // omit from JSON when zero value
+    Widget    Widget      // semantic input type; nil = no UI binding (set by ormc from `input:` tag)
+    DB        *FieldDB    // nil for formonly/transport structs
+    Ref       *Definition // only for FieldStruct / FieldStructSlice: points to nested Definition
+    Permitted             // embedded: validation rules (characters, min/max)
 }
 ```
+
+### Type Mapping
+
+`Field.Type` maps deterministically to a Go type. `ormc` uses this mapping to generate the concrete struct fields.
+
+| `Field.Type` | Go Type |
+|---|---|
+| `FieldText`, `FieldRaw` | `string` |
+| `FieldInt` | `int64` |
+| `FieldFloat` | `float64` |
+| `FieldBool` | `bool` |
+| `FieldBlob` | `[]byte` |
+| `FieldIntSlice` | `[]int` |
+| `FieldStruct` | type of `Ref` (required) |
+| `FieldStructSlice` | `[]` of type of `Ref` (required) |
 
 ## FieldDB
 

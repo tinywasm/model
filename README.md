@@ -13,6 +13,7 @@ Core schema, validation, and codec types for tinywasm ecosystem. This package pr
 
 ## Key Features
 
+- 📐 **Model Definition** - Author schemas manually with `Definition` and `Fields`
 - 🏗️ **Schema-first design** - Describe struct fields without reflection
 - ✅ **Validation by contract** - Character whitelists, length constraints, custom validators
 - 🔄 **Typed codecs** - `Encodable`/`Decodable` for 0-alloc serialization
@@ -27,6 +28,21 @@ go get github.com/tinywasm/model
 ```
 
 ## Quick Start
+
+### Defining a Model Definition
+
+The source of truth for a model is now a `Definition` literal:
+
+```go
+var UserModel = model.Definition{
+    Name: "user",
+    Fields: model.Fields{
+        {Name: "id",    Type: model.FieldInt,  DB: &model.FieldDB{PK: true, AutoInc: true}},
+        {Name: "name",  Type: model.FieldText, NotNull: true, Permitted: model.Permitted{Minimum: 2}},
+        {Name: "email", Type: model.FieldText, NotNull: true},
+    },
+}
+```
 
 ### Defining a Schema
 
