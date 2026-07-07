@@ -58,4 +58,13 @@ func TestDefinition(t *testing.T) {
 	if fZero.Ref != nil {
 		t.Error("expected zero-value Ref to be nil")
 	}
+
+	// Assert that Exclude defaults to false and can be set explicitly.
+	if fZero.Exclude {
+		t.Error("expected zero-value Exclude to be false")
+	}
+	fExcluded := model.Field{Name: "password_hash", Type: model.FieldText, Exclude: true}
+	if !fExcluded.Exclude {
+		t.Error("expected Exclude to be true when set")
+	}
 }

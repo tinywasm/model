@@ -70,8 +70,22 @@ type Field struct {
     Widget    Widget      // semantic input type; nil = no UI binding (set by ormc from `input:` tag)
     DB        *FieldDB    // nil for formonly/transport structs
     Ref       *Definition // only for FieldStruct / FieldStructSlice: points to nested Definition
+    Exclude   bool        // field exists on the generated struct but is excluded from
+                          // Pointers()/EncodeFields()/DecodeFields() — no persistence, no wire codec
     Permitted             // embedded: validation rules (characters, min/max)
 }
+```
+
+### Exclude
+
+`Exclude: true` marks a field that must appear on the generated struct but must never be scanned,
+persisted, or serialized by `ormc`-generated code — e.g. a password hash set via a side channel that
+the struct needs to carry in memory but that has no business going through `Pointers()` or the codec.
+
+```go
+{Name: "password_hash", Type: model.FieldText, Exclude: true}
+// ormc still generates: PasswordHash string
+// but omits it from Pointers()/EncodeFields()/DecodeFields()
 ```
 
 ### Type Mapping

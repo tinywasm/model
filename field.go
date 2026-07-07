@@ -77,6 +77,10 @@ type Field struct {
 	Widget    Widget   // ← NEW: set by ormc from `input:` tag. nil = no UI binding.
 	DB        *FieldDB // nil for formonly/transport structs
 	Ref       *Definition // only for FieldStruct / FieldStructSlice: points to the nested Definition.
+	Exclude   bool     // field exists on the generated struct but is NOT part of
+	                   // Pointers()/EncodeFields()/DecodeFields() — no persistence, no wire codec.
+	                   // Use for hand-managed data the struct must carry but ormc must not touch
+	                   // (e.g. a password hash set via a side channel, never scanned/serialized).
 	Permitted          // embedded: validation rules (characters, min/max)
 }
 
