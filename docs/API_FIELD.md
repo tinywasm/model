@@ -69,10 +69,18 @@ type Field struct {
     OmitEmpty bool        // omit from JSON when zero value
     Widget    Widget      // semantic input type; nil = no UI binding (set by ormc from `input:` tag)
     DB        *FieldDB    // nil for formonly/transport structs
-    Ref       *Definition // only for FieldStruct / FieldStructSlice: points to nested Definition
+    Ref       *Definition // composition OR scalar FK — disambiguated by Type, see below
     Exclude   bool        // field exists on the generated struct but is excluded from
                           // Pointers()/EncodeFields()/DecodeFields() — no persistence, no wire codec
     Permitted             // embedded: validation rules (characters, min/max)
+}
+
+type FieldDB struct {
+    PK        bool
+    Unique    bool
+    AutoInc   bool
+    RefColumn string // scalar FK only: column in Ref's table. Empty = auto-detect its PK.
+    OnDelete  string // scalar FK only: ON DELETE action. Empty = generator default (e.g. CASCADE).
 }
 ```
 
@@ -87,6 +95,34 @@ the struct needs to carry in memory but that has no business going through `Poin
 // ormc still generates: PasswordHash string
 // but omits it from Pointers()/EncodeFields()/DecodeFields()
 ```
+
+### Ref — two meanings, disambiguated by Type
+
+`Ref *Definition` means one of two unrelated things depending on `Type` — never both at once:
+
+- **`Type` is `FieldStruct`/`FieldStructSlice` → composition.** `Ref` is the nested `Definition`; the
+  field's Go type comes from it. The nested value is part of THIS struct's own
+  `Schema()`/`Pointers()`/codec (e.g. an embedded `Address` value).
+- **`Type` is a scalar (`FieldText`/`FieldInt`/...) → scalar foreign key.** `Ref` is the `Definition`
+  of the table this column references (e.g. `staff_id int64` pointing to `StaffModel`). It drives DDL
+  foreign-key constraint generation (`orm.FieldExt`/`SchemaExt()`), using `FieldDB.RefColumn`/
+  `FieldDB.OnDelete` for details. It does **not** change the field's Go type — that stays the plain
+  scalar mapping from `Type`.
+
+```go
+// composition: Order embeds a ShippingAddress value
+{Name: "shipping_address", Type: model.FieldStruct, Ref: &AddressModel}
+
+// scalar FK: staff_id is an int64 column, but it's a foreign key into "staff"
+{Name: "staff_id", Type: model.FieldInt, NotNull: true, Ref: &StaffModel,
+    DB: &model.FieldDB{RefColumn: "id", OnDelete: "CASCADE"}}
+```
+
+**Known Go limitation — bidirectional Ref:** two package-level `Definition` vars cannot `Ref` each
+other directly in their literals (Go rejects it as an "initialization cycle" — confirmed, not a
+model design gap). A workaround exists (assign the pointers in `init()` instead of the literal), but
+`ormc` is not expected to auto-detect or paper over this; if a bidirectional case is ever needed,
+handle it explicitly.
 
 ### Type Mapping
 

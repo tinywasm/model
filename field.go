@@ -47,6 +47,13 @@ type FieldDB struct {
 	PK      bool
 	Unique  bool
 	AutoInc bool
+
+	// RefColumn/OnDelete apply only when the owning Field is a scalar foreign key
+	// (Field.Ref set, Field.Type NOT FieldStruct/FieldStructSlice — see Field.Ref doc).
+	// Both are optional: RefColumn empty = auto-detect the PK of Ref's table;
+	// OnDelete empty = generator default (e.g. CASCADE).
+	RefColumn string
+	OnDelete  string
 }
 
 // Field describes a single field in a struct's schema.
@@ -76,7 +83,19 @@ type Field struct {
 	OmitEmpty bool     // omit from JSON when zero value
 	Widget    Widget   // ← NEW: set by ormc from `input:` tag. nil = no UI binding.
 	DB        *FieldDB // nil for formonly/transport structs
-	Ref       *Definition // only for FieldStruct / FieldStructSlice: points to the nested Definition.
+	// Ref has two meanings, disambiguated by Type — never both at once:
+	//   - Type is FieldStruct/FieldStructSlice: composition. Ref is the nested Definition;
+	//     the field's Go type comes from it (embedded/nested value, part of THIS struct's own
+	//     Schema()/Pointers()/codec).
+	//   - Type is a scalar (FieldText/FieldInt/...): scalar foreign key. Ref is the Definition
+	//     of the table this column points to (e.g. a "staff_id int64" referencing StaffModel).
+	//     Drives DDL FK constraint generation (orm.FieldExt/SchemaExt) — see FieldDB.RefColumn/OnDelete.
+	//     Does NOT change the field's Go type, which stays the plain scalar mapping from Type.
+	// A *Definition with a bidirectional Ref to another package-level Definition in the same
+	// package cannot be expressed as a single literal (Go rejects it: "initialization cycle") —
+	// this is a Go language limitation, not a model design gap. Two-phase assignment via init()
+	// is a workaround but is out of scope for ormc to auto-detect; report it if ever needed.
+	Ref *Definition
 	Exclude   bool     // field exists on the generated struct but is NOT part of
 	                   // Pointers()/EncodeFields()/DecodeFields() — no persistence, no wire codec.
 	                   // Use for hand-managed data the struct must carry but ormc must not touch

@@ -67,4 +67,23 @@ func TestDefinition(t *testing.T) {
 	if !fExcluded.Exclude {
 		t.Error("expected Exclude to be true when set")
 	}
+
+	// Assert Ref disambiguated by Type: scalar FK usage (Ref + FieldDB.RefColumn/OnDelete).
+	StaffModel := &model.Definition{Name: "staff"}
+	fFK := model.Field{
+		Name: "staff_id", Type: model.FieldInt, NotNull: true, Ref: StaffModel,
+		DB: &model.FieldDB{RefColumn: "id", OnDelete: "CASCADE"},
+	}
+	if fFK.Ref != StaffModel {
+		t.Error("expected scalar FK Ref to be preserved")
+	}
+	if fFK.DB.RefColumn != "id" || fFK.DB.OnDelete != "CASCADE" {
+		t.Error("expected FieldDB.RefColumn/OnDelete to be preserved")
+	}
+
+	// Zero-value of the new FieldDB members must be empty strings.
+	var dbZero model.FieldDB
+	if dbZero.RefColumn != "" || dbZero.OnDelete != "" {
+		t.Error("expected zero-value RefColumn/OnDelete to be empty")
+	}
 }
