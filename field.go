@@ -154,9 +154,27 @@ func (f Field) hasPermittedRules() bool {
 		len(f.NotAllowed) > 0 || f.StartWith != nil
 }
 
-// ValidateFields validates all fields of a Fielder based on the action ('c', 'u', 'd').
+// CRUD action bytes — the single source of truth for the ecosystem-wide
+// action convention used by Validator, ValidateFields, and downstream
+// libraries (crudp HTTP mapping, mcp Tool.Action / RBAC, form).
+//
+// Deliberately plain byte constants (not a named type) so every existing
+// `action byte` signature accepts them unchanged.
+//
+// Not to be confused with orm.Action (an int enum describing query
+// execution plans) — that is a different, orm-internal concept.
+const (
+	ActionCreate byte = 'c'
+	ActionRead   byte = 'r'
+	ActionUpdate byte = 'u'
+	ActionDelete byte = 'd'
+)
+
+// ValidateFields validates all fields of a Fielder based on the action.
 // For each FieldText field, reads the string value and calls Field.Validate.
 // For non-text fields with NotNull, checks against zero value.
+//
+// Common actions are ActionCreate, ActionUpdate, and ActionDelete.
 //
 // This is the single validation entry point — ormc-generated Validate()
 // methods call this function first.
@@ -164,8 +182,8 @@ func ValidateFields(action byte, f Fielder) error {
 	schema := f.Schema()
 	ptrs := f.Pointers()
 	for i, field := range schema {
-		// 'd' delete: only PK required, skip everything else
-		if action == 'd' {
+		// ActionDelete: only PK required, skip everything else
+		if action == ActionDelete {
 			if field.IsPK() {
 				switch field.Type {
 				case FieldText, FieldRaw:
@@ -182,8 +200,8 @@ func ValidateFields(action byte, f Fielder) error {
 			continue
 		}
 
-		// 'c' create: skip PK+AutoInc (DB assigns it)
-		if action == 'c' && field.IsPK() && field.IsAutoInc() {
+		// ActionCreate: skip PK+AutoInc (DB assigns it)
+		if action == ActionCreate && field.IsPK() && field.IsAutoInc() {
 			continue
 		}
 
@@ -191,7 +209,7 @@ func ValidateFields(action byte, f Fielder) error {
 		case FieldText, FieldRaw:
 			val, _ := ReadStringPtr(ptrs[i])
 
-			// PK always required (in 'c' without AutoInc, in 'u', and any other)
+			// PK always required (in ActionCreate without AutoInc, in ActionUpdate, and any other)
 			if field.IsPK() && val == "" {
 				return fmt.Err(field.Name, "required")
 			}

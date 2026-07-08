@@ -44,7 +44,6 @@ Receives typed field values. Concrete implementations (like JSON or JS-value) re
 type FieldWriter interface {
     String(name, val string)
     Int(name string, val int64)
-    Uint(name string, val uint64)
     Float(name string, val float64)
     Bool(name string, val bool)
     Bytes(name string, val []byte)
@@ -79,7 +78,6 @@ Delivers typed field values by name. Implementations avoid building internal map
 type FieldReader interface {
     String(name string) (string, bool)
     Int(name string) (int64, bool)
-    Uint(name string) (uint64, bool)
     Float(name string) (float64, bool)
     Bool(name string) (bool, bool)
     Bytes(name string) ([]byte, bool)

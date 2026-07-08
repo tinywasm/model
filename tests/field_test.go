@@ -269,9 +269,9 @@ type fullMock struct {
 	Int     int
 	Int32   int32
 	Int64   int64
-	Uint    uint
-	Uint32  uint32
-	Uint64  uint64
+	U       uint
+	U32     uint32
+	U64     uint64
 	Float   float64
 	Float32 float32
 	Bool    bool
@@ -286,9 +286,9 @@ func (m *fullMock) Schema() []Field {
 		{Name: "int", Type: FieldInt, NotNull: true},
 		{Name: "int32", Type: FieldInt},
 		{Name: "int64", Type: FieldInt},
-		{Name: "uint", Type: FieldInt},
-		{Name: "uint32", Type: FieldInt},
-		{Name: "uint64", Type: FieldInt},
+		{Name: "u", Type: FieldInt},
+		{Name: "u32", Type: FieldInt},
+		{Name: "u64", Type: FieldInt},
 		{Name: "float", Type: FieldFloat, NotNull: true},
 		{Name: "float32", Type: FieldFloat},
 		{Name: "bool", Type: FieldBool, NotNull: true},
@@ -299,7 +299,7 @@ func (m *fullMock) Schema() []Field {
 }
 
 func (m *fullMock) Pointers() []any {
-	return []any{&m.Text, &m.Int, &m.Int32, &m.Int64, &m.Uint, &m.Uint32, &m.Uint64, &m.Float, &m.Float32, &m.Bool, &m.Blob, &m.Raw, m.Nested}
+	return []any{&m.Text, &m.Int, &m.Int32, &m.Int64, &m.U, &m.U32, &m.U64, &m.Float, &m.Float32, &m.Bool, &m.Blob, &m.Raw, m.Nested}
 }
 
 type mockUser struct {
@@ -316,6 +316,12 @@ func (m *mockUser) Schema() []Field {
 func (m *mockUser) Pointers() []any            { return []any{&m.id, &m.name} }
 func (m *mockUser) Validate(action byte) error { return ValidateFields(action, m) }
 
+func TestActionConstantValues(t *testing.T) {
+	if ActionCreate != 'c' || ActionRead != 'r' || ActionUpdate != 'u' || ActionDelete != 'd' {
+		t.Fatal("action constants must keep their CRUD byte values — ecosystem wire/RBAC contract")
+	}
+}
+
 func TestValidateFieldsRecursive(t *testing.T) {
 	m := &fullMock{
 		Text:   "hello",
@@ -327,20 +333,20 @@ func TestValidateFieldsRecursive(t *testing.T) {
 		Nested: &mockUser{id: "u1", name: "Alice"},
 	}
 
-	if err := ValidateFields('u', m); err != nil {
+	if err := ValidateFields(ActionUpdate, m); err != nil {
 		t.Errorf("expected success, got %v", err)
 	}
 
 	// Fail nested
 	m.Nested.name = ""
-	if err := ValidateFields('u', m); err == nil {
+	if err := ValidateFields(ActionUpdate, m); err == nil {
 		t.Error("expected failure in nested struct")
 	}
 
 	// Fail other types
 	m.Nested.name = "Alice"
 	m.Int = 0 // NotNull
-	if err := ValidateFields('u', m); err == nil {
+	if err := ValidateFields(ActionUpdate, m); err == nil {
 		t.Error("expected failure for int zero")
 	}
 }
@@ -351,9 +357,9 @@ func TestReadValuesAllTypes(t *testing.T) {
 		Int:     10,
 		Int32:   32,
 		Int64:   64,
-		Uint:    100,
-		Uint32:  320,
-		Uint64:  640,
+		U:       100,
+		U32:     320,
+		U64:     640,
 		Float:   1.1,
 		Float32: 2.2,
 		Bool:    true,
@@ -527,7 +533,7 @@ func TestValidateFieldsWithOnlyFielder(t *testing.T) {
 	ptrs := []any{sub}
 
 	// Validate it through the manualFielder helper
-	if err := ValidateFields('u', &manualFielder{schema, ptrs}); err != nil {
+	if err := ValidateFields(ActionUpdate, &manualFielder{schema, ptrs}); err != nil {
 		t.Errorf("expected success, got %v", err)
 	}
 }
@@ -562,19 +568,19 @@ func TestValidateFieldsActions(t *testing.T) {
 		f := getFielder(m)
 
 		// PK+AutoInc should be skipped in 'c'
-		if err := ValidateFields('c', f); err != nil {
-			t.Errorf("expected success in 'c' with zero ID, got %v", err)
+		if err := ValidateFields(ActionCreate, f); err != nil {
+			t.Errorf("expected success in ActionCreate with zero ID, got %v", err)
 		}
 
 		// NotNull still applies
 		m.Name = ""
-		if err := ValidateFields('c', f); err == nil {
-			t.Error("expected failure in 'c' with empty Name")
+		if err := ValidateFields(ActionCreate, f); err == nil {
+			t.Error("expected failure in ActionCreate with empty Name")
 		}
 		m.Name = "Alice"
 		m.Raw = ""
-		if err := ValidateFields('c', f); err == nil {
-			t.Error("expected failure in 'c' with empty Raw")
+		if err := ValidateFields(ActionCreate, f); err == nil {
+			t.Error("expected failure in ActionCreate with empty Raw")
 		}
 	})
 
@@ -582,14 +588,14 @@ func TestValidateFieldsActions(t *testing.T) {
 		m := &userActionMock{ID: 1, Name: "Alice", Email: "a@b.com", Raw: "{}", Version: 1}
 		f := getFielder(m)
 
-		if err := ValidateFields('u', f); err != nil {
-			t.Errorf("expected success in 'u', got %v", err)
+		if err := ValidateFields(ActionUpdate, f); err != nil {
+			t.Errorf("expected success in ActionUpdate, got %v", err)
 		}
 
 		// PK is required in 'u'
 		m.ID = 0
-		if err := ValidateFields('u', f); err == nil {
-			t.Error("expected failure in 'u' with zero ID")
+		if err := ValidateFields(ActionUpdate, f); err == nil {
+			t.Error("expected failure in ActionUpdate with zero ID")
 		}
 	})
 
@@ -598,14 +604,14 @@ func TestValidateFieldsActions(t *testing.T) {
 		f := getFielder(m)
 
 		// Only PK matters in 'd'
-		if err := ValidateFields('d', f); err != nil {
-			t.Errorf("expected success in 'd' with only PK, got %v", err)
+		if err := ValidateFields(ActionDelete, f); err != nil {
+			t.Errorf("expected success in ActionDelete with only PK, got %v", err)
 		}
 
 		// PK missing
 		m.ID = 0
-		if err := ValidateFields('d', f); err == nil {
-			t.Error("expected failure in 'd' with missing PK")
+		if err := ValidateFields(ActionDelete, f); err == nil {
+			t.Error("expected failure in ActionDelete with missing PK")
 		}
 	})
 
