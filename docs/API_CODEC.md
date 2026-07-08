@@ -4,7 +4,7 @@ The `model` package defines a typed contract for serialization and deserializati
 
 This contract allows models to cross boundaries (JSON, WebAssembly/JavaScript) efficiently by having the models themselves describe how to write and read their fields.
 
-**See also:** [`CODEC_AND_FIELDER.md`](CODEC_AND_FIELDER.md) for how the codec relates to `Field`/`Fielder`.
+**See also:** [`CODEC_AND_FIELDER.md`](CODEC_AND_FIELDER.md) for how the codec relates to `Field`/`Fielder`, and [`WHY_64BIT_ONLY.md`](WHY_64BIT_ONLY.md) for why `int64`/`float64` are the only numeric types.
 
 ## Core Interfaces
 

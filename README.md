@@ -116,6 +116,7 @@ func (u *User) DecodeFields(r model.FieldReader) {
 
 - [Field and Fielder API](docs/API_FIELD.md) - Schema metadata and reflection-less access
 - [Codec API](docs/API_CODEC.md) - Typed serialization contract (0-alloc)
+- [Why 64-bit Only](docs/WHY_64BIT_ONLY.md) - Rationale for `int64`/`float64` as the only numeric types
 - [Codec vs Field/Fielder](docs/CODEC_AND_FIELDER.md) - Architectural separation and roles
 - [Permitted Validation](docs/API_PERMITTED.md) - Character whitelists and length constraints
 
