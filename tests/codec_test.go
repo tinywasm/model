@@ -33,15 +33,6 @@ func (m *mockFieldWriter) Int(name string, val int64) {
 	m.buf.WriteByte(';')
 }
 
-func (m *mockFieldWriter) Uint(name string, val uint64) {
-	m.buf.WriteString(name)
-	m.buf.WriteByte('=')
-	m.conv.ResetBuffer(fmt.BuffWork)
-	m.conv.WrIntBase(fmt.BuffWork, int64(val), 10, false)
-	m.buf.Write(m.conv.GetBytes(fmt.BuffWork))
-	m.buf.WriteByte(';')
-}
-
 func (m *mockFieldWriter) Float(name string, val float64) {
 	m.buf.WriteString(name)
 	m.buf.WriteByte('=')
@@ -177,18 +168,6 @@ func (r *mockFieldReader) Int(name string) (int64, bool) {
 	c := fmt.GetConv()
 	c.LoadBytes(val)
 	v, _ := c.Int64()
-	c.PutConv()
-	return v, true
-}
-
-func (r *mockFieldReader) Uint(name string) (uint64, bool) {
-	val, ok := r.find(name)
-	if !ok {
-		return 0, false
-	}
-	c := fmt.GetConv()
-	c.LoadBytes(val)
-	v, _ := c.Uint64()
 	c.PutConv()
 	return v, true
 }

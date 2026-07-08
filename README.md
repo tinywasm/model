@@ -86,6 +86,12 @@ func (u *User) Validate(action byte) error {
 }
 ```
 
+Usage:
+
+```go
+err := model.ValidateFields(model.ActionUpdate, user)
+```
+
 ### Using the Codec
 
 Generated `EncodeFields` and `DecodeFields` methods follow the typed codec pattern:

@@ -62,3 +62,11 @@ truncation bugs. The storage layer agrees: SQLite integers are 64-bit and Postgr
   silent `int64 → int` narrowing already exists there. Keep `FieldIntSlice` for small
   enumerations (role lists, option ids); values beyond 32 bits belong in scalar `int64`
   fields or `FieldBlob`.
+
+## Removal of `Uint`
+
+The codec interfaces (`FieldWriter` and `FieldReader`) originally included `Uint` methods.
+These were removed to simplify the API and reduce binary size. The single ecosystem-wide
+caller (`binary.Message`'s `uint32` correlation ID) was migrated losslessly to `Int`.
+Genuine 64-bit unsigned values (like hashes) that might exceed `int64` should be
+represented as `FieldText` (hex) or `FieldBlob` (8 bytes).

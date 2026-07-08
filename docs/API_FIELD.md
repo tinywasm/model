@@ -299,15 +299,28 @@ type SafeFields interface {
 
 Generic function that iterates through a `Fielder`'s schema and pointers to perform full validation based on the action. It handles `FieldText` (calling `Field.Validate`) and `FieldStruct` (recursive validation).
 
+#### Action Constants
+
+The following `byte` constants should be used for the `action` parameter:
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `ActionCreate` | `'c'` | Model is being created (skips PK+AutoInc) |
+| `ActionRead` | `'r'` | Model is being read (used for RBAC/tool convention) |
+| `ActionUpdate` | `'u'` | Model is being updated (requires PK) |
+| `ActionDelete` | `'d'` | Model is being deleted (only requires PK, skips other validation) |
+
+#### Validation Matrix
+
 | Action | PK + AutoInc | PK without AutoInc | NotNull | Permitted |
 |--------|--------------|--------------------|---------|-----------|
-| `'c'` create | skip (DB assigns) | required | required | applies |
-| `'u'` update | required | required | required | applies |
-| `'d'` delete | required | required | skip | skip |
+| `ActionCreate` | skip (DB assigns) | required | required | applies |
+| `ActionUpdate` | required | required | required | applies |
+| `ActionDelete` | required | required | skip | skip |
 | other/unknown | required | required | required | applies |
 
 ```go
-err := model.ValidateFields('u', myFielder)
+err := model.ValidateFields(model.ActionUpdate, myFielder)
 ```
 
 ## Conversion and Reading Helpers
