@@ -26,8 +26,8 @@ convención a `input.Email()`. Un typo no lo caza el compilador.
 > **Formas confirmadas tras Q&A:** el tipo del plano se llama `model.Definition` (cognado
 > inglés/español, no colisiona con el `struct` generado ni con `Schema()`). **No hay paquete
 > `field`**: la `Definition` se escribe con literales `model.Field{...}` — exactamente lo que hoy
-> genera ormc como `_schemaX`. Los widgets salen de cualquier `model.Widget`; `tinywasm/form/input`
-> es la fuente básica **opcional**.
+> genera ormc como `_schemaX`. Los kinds salen de `model` (base, siempre validan) o de
+> `tinywasm/form/input` (decorados con UI); ver §8 «Validation design».
 
 Invertimos la flecha: **lo que hoy es generado (`_schemaUser`) pasa a escribirse a mano, todo
 tipado**, y de ahí se genera lo demás:
@@ -37,9 +37,9 @@ tipado**, y de ahí se genera lo demás:
 var UserModel = model.Definition{
     Name: "user",
     Fields: model.Fields{
-        {Name: "id",    Type: model.FieldInt,  DB: &model.FieldDB{PK: true, AutoInc: true}},
-        {Name: "name",  Type: model.FieldText, NotNull: true, Widget: input.Text(), Permitted: model.Permitted{Minimum: 2}},
-        {Name: "email", Type: model.FieldText, NotNull: true, Widget: input.Email()}, // input.Email() ES un símbolo → typo = no compila
+        {Name: "id",    Type: model.Int(),  DB: &model.FieldDB{PK: true, AutoInc: true}},
+        {Name: "name",  Type: input.Text(), NotNull: true, Permitted: model.Permitted{Minimum: 2}},
+        {Name: "email", Type: input.Email(), NotNull: true}, // input.Email() ES un símbolo → typo = no compila
     },
 }
 ```
@@ -84,9 +84,9 @@ plomería no-reflect. El valor vive en el struct generado.
 ```go
 // a mano (fuente de verdad)
 var UserModel = model.Definition{ Name: "user", Fields: model.Fields{
-    {Name: "id", Type: model.FieldInt, DB: &model.FieldDB{PK: true, AutoInc: true}},
-    {Name: "name", Type: model.FieldText, Widget: input.Text()},
-    {Name: "email", Type: model.FieldText, Widget: input.Email()},
+    {Name: "id", Type: model.Int(), DB: &model.FieldDB{PK: true, AutoInc: true}},
+    {Name: "name", Type: input.Text()},
+    {Name: "email", Type: input.Email()},
 }}
 
 // generado por ormc → user_gen.go
@@ -129,9 +129,9 @@ vez schema, validación, form, transporte y fila. Para una fila, se clona el mod
 ```go
 // a mano — y esto es TODO
 var UserModel = model.Definition{ Name: "user", Fields: model.Fields{
-    {Name: "id", Type: model.FieldInt, DB: &model.FieldDB{PK: true, AutoInc: true}},
-    {Name: "name", Type: model.FieldText, Widget: input.Text()},
-    {Name: "email", Type: model.FieldText, Widget: input.Email()},
+    {Name: "id", Type: model.Int(), DB: &model.FieldDB{PK: true, AutoInc: true}},
+    {Name: "name", Type: input.Text()},
+    {Name: "email", Type: input.Email()},
 }}
 
 // uso
