@@ -60,13 +60,13 @@ type FieldDB struct {
 // It provides type metadata, constraint flags, and validation rules
 // used by database (orm), transport (json), UI (form), and validation layers.
 //
-// Validation rules are embedded via Permitted. When a field has validation
-// configured, Field.Validate(value) checks the value against all rules.
-// Fields without validation rules pass any value.
+// Validation rules are provided by its Type (Kind) and embedded via Permitted.
+// Field.Validate(value) checks both. A nil Type (Kind) is an error — the
+// ecosystem is fail-closed by design.
 //
-// Deterministic Field.Type → Go type mapping:
+// Deterministic Field.Type.Storage() → Go type mapping:
 //
-// | Field.Type | Go Type |
+// | Storage | Go Type |
 // |---|---|
 // | FieldText, FieldRaw | string |
 // | FieldInt | int64 |
@@ -78,12 +78,11 @@ type FieldDB struct {
 // | FieldStructSlice | [] of Ref type (required) |
 type Field struct {
 	Name      string
-	Type      FieldType
+	Type      Kind
 	NotNull   bool
 	OmitEmpty bool     // omit from JSON when zero value
-	Widget    Widget   // ← NEW: set by ormc from `input:` tag. nil = no UI binding.
 	DB        *FieldDB // nil for formonly/transport structs
-	// Ref has two meanings, disambiguated by Type — never both at once:
+	// Ref has two meanings, disambiguated by Type.Storage() — never both at once:
 	//   - Type is FieldStruct/FieldStructSlice: composition. Ref is the nested Definition;
 	//     the field's Go type comes from it (embedded/nested value, part of THIS struct's own
 	//     Schema()/Pointers()/codec).
@@ -113,12 +112,13 @@ func (f Field) IsUnique() bool { return f.DB != nil && f.DB.Unique }
 func (f Field) IsAutoInc() bool { return f.DB != nil && f.DB.AutoInc }
 
 // Validate checks a string value against this field's constraints.
-// Checks NotNull first, then length, then delegates to Widget and Permitted.
+// Checks NotNull first, then Kind, then Permitted (length and chars).
 //
-// Security note: fields using standard widgets (Text, Textarea, Email) have whitelists
-// that exclude HTML-dangerous characters. ValidateFields provides implicit XSS protection
-// for form-submitted data. Data from external sources (DB reads, API responses) bypasses
-// this check and must be encoded at the output layer.
+// Security note: standard Kinds (Text, Int, Float, Bool) provide an input-boundary
+// floor (A03 Injection/XSS) by using whitelists that exclude HTML-dangerous
+// characters. ValidateFields provides implicit fail-closed protection for
+// form-submitted data. Data from external sources (DB reads, API responses)
+// bypasses this check and must be encoded at the output layer.
 func (f Field) Validate(value string) error {
 	if f.NotNull && value == "" {
 		return fmt.Err(f.Name, "required")
@@ -127,10 +127,13 @@ func (f Field) Validate(value string) error {
 		return nil // empty + not required = ok
 	}
 
-	if f.Widget != nil {
-		if err := f.Widget.Validate(value); err != nil {
-			return err
-		}
+	if f.Type == nil {
+		return fmt.Err(f.Name, "kind required")
+	}
+
+	// Baseline kind validation
+	if err := f.Type.Validate(value); err != nil {
+		return fmt.Err(f.Name, err)
 	}
 
 	// Always check length if configured, regardless of character rules
@@ -182,17 +185,22 @@ func ValidateFields(action byte, f Fielder) error {
 	schema := f.Schema()
 	ptrs := f.Pointers()
 	for i, field := range schema {
+		if field.Type == nil {
+			return fmt.Err(field.Name, "kind required")
+		}
+		ft := field.Type.Storage()
+
 		// ActionDelete: only PK required, skip everything else
 		if action == ActionDelete {
 			if field.IsPK() {
-				switch field.Type {
+				switch ft {
 				case FieldText, FieldRaw:
 					val, _ := ReadStringPtr(ptrs[i])
 					if val == "" {
 						return fmt.Err(field.Name, "required")
 					}
 				default:
-					if IsZeroPtr(ptrs[i], field.Type) {
+					if IsZeroPtr(ptrs[i], ft) {
 						return fmt.Err(field.Name, "required")
 					}
 				}
@@ -205,7 +213,7 @@ func ValidateFields(action byte, f Fielder) error {
 			continue
 		}
 
-		switch field.Type {
+		switch ft {
 		case FieldText, FieldRaw:
 			val, _ := ReadStringPtr(ptrs[i])
 
@@ -232,11 +240,11 @@ func ValidateFields(action byte, f Fielder) error {
 
 		default:
 			// PK always required
-			if field.IsPK() && IsZeroPtr(ptrs[i], field.Type) {
+			if field.IsPK() && IsZeroPtr(ptrs[i], ft) {
 				return fmt.Err(field.Name, "required")
 			}
 			// Non-text fields: only check NotNull (zero value check)
-			if field.NotNull && IsZeroPtr(ptrs[i], field.Type) {
+			if field.NotNull && IsZeroPtr(ptrs[i], ft) {
 				return fmt.Err(field.Name, "required")
 			}
 		}
@@ -294,16 +302,16 @@ func IsZeroPtr(ptr any, ft FieldType) bool {
 	return false
 }
 
-// ReadValues reads field values through Pointers by dereferencing based on FieldType.
+// ReadValues reads field values through Pointers by dereferencing based on Storage type.
 // Used by consumers that need []any (e.g., orm for SQL args).
 // Hot-path consumers (json, form) should read through Pointers directly to avoid boxing.
 func ReadValues(schema []Field, ptrs []any) []any {
 	vals := make([]any, len(schema))
 	for i, f := range schema {
-		if ptrs[i] == nil {
+		if ptrs[i] == nil || f.Type == nil {
 			continue
 		}
-		switch f.Type {
+		switch f.Type.Storage() {
 		case FieldText, FieldRaw:
 			if p, ok := ptrs[i].(*string); ok && p != nil {
 				vals[i] = *p

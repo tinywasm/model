@@ -3,7 +3,6 @@ package model_test
 import (
 	"testing"
 
-	"github.com/tinywasm/fmt"
 	. "github.com/tinywasm/model"
 )
 
@@ -33,151 +32,84 @@ func TestFieldTypeString(t *testing.T) {
 	}
 }
 
-type stubInput struct{ kind string }
+// A03 Injection/XSS — Kind validation baseline
+func TestBaseKinds(t *testing.T) {
+	tests := []struct {
+		kind    Kind
+		storage FieldType
+		name    string
+		valid   string
+		invalid string
+	}{
+		{Text(), FieldText, "text", "Hello World!", "<script>"},
+		{Int(), FieldInt, "int", "-123", "12a"},
+		{Float(), FieldFloat, "float", "-123.45", "1.2.3"},
+		{Bool(), FieldBool, "bool", "true", "yes"},
+		{Blob(), FieldBlob, "blob", "anything", ""}, // valid is just a dummy
+		{Raw(), FieldRaw, "raw", "{}", ""},
+	}
 
-func (s stubInput) Type() string                       { return s.kind }
-func (s stubInput) Clone(parentID, name string) Widget { return s }
-func (s stubInput) Validate(v string) error {
-	if v == "invalid" {
-		return fmt.Err(s.kind, "invalid value")
-	}
-	return nil
-}
-
-func TestFieldValidate_WithWidget_Valid(t *testing.T) {
-	f := Field{
-		Name:   "email",
-		Widget: stubInput{kind: "email"},
-	}
-	if err := f.Validate("valid@email.com"); err != nil {
-		t.Errorf("expected no error, got %v", err)
-	}
-}
-
-func TestFieldValidate_WithWidget_Invalid(t *testing.T) {
-	f := Field{
-		Name:   "email",
-		Widget: stubInput{kind: "email"},
-	}
-	if err := f.Validate("invalid"); err == nil {
-		t.Error("expected error from widget, got nil")
-	}
-}
-
-func TestFieldValidate_WithWidgetAndPermitted(t *testing.T) {
-	f := Field{
-		Name:      "email",
-		Widget:    stubInput{kind: "email"},
-		Permitted: Permitted{Minimum: 10, Letters: true, Extra: []rune{'@', '.'}},
-	}
-	// Widget passes, but Permitted fails (length)
-	if err := f.Validate("abc"); err == nil {
-		t.Error("expected error from Permitted.Minimum, got nil")
-	}
-	// Both pass
-	if err := f.Validate("valid@email.com"); err != nil {
-		t.Errorf("expected no error, got %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.kind.Storage() != tt.storage {
+				t.Errorf("Storage() = %v, want %v", tt.kind.Storage(), tt.storage)
+			}
+			if tt.kind.Name() != tt.name {
+				t.Errorf("Name() = %v, want %v", tt.kind.Name(), tt.name)
+			}
+			if err := tt.kind.Validate(tt.valid); err != nil {
+				t.Errorf("Validate(%q) failed: %v", tt.valid, err)
+			}
+			if tt.invalid != "" {
+				if err := tt.kind.Validate(tt.invalid); err == nil {
+					t.Errorf("Validate(%q) should have failed", tt.invalid)
+				}
+			}
+		})
 	}
 }
 
-func TestFieldValidate_NilWidget(t *testing.T) {
+// A04 Insecure Design — fail-closed validation
+func TestFieldValidate_FailClosed(t *testing.T) {
+	// Text() kind must reject HTML-dangerous chars even without Permitted rules
 	f := Field{
-		Name:      "name",
-		Widget:    nil,
-		Permitted: Permitted{Numbers: true},
+		Name: "x",
+		Type: Text(),
 	}
-	if err := f.Validate("123"); err != nil {
-		t.Errorf("expected no error, got %v", err)
+	if err := f.Validate("<script>"); err == nil {
+		t.Error("expected Text() kind to reject <script>, but it passed")
 	}
-	if err := f.Validate("abc"); err == nil {
-		t.Error("expected error from Permitted.Numbers, got nil")
+
+	// Nil kind must error
+	f2 := Field{Name: "y", Type: nil}
+	if err := f2.Validate("v"); err == nil {
+		t.Error("expected error for nil kind, got nil")
+	}
+}
+
+// Monotonic composition invariant: field rules can only TIGHTEN the kind.
+func TestFieldValidate_MonotonicInvariant(t *testing.T) {
+	f := Field{
+		Name:      "x",
+		Type:      Text(),
+		Permitted: Permitted{Extra: []rune{'<'}}, // Try to allow '<' which Text() rejects
+	}
+	// Kind rejects it first; Permitted.Extra cannot re-allow it.
+	if err := f.Validate("<"); err == nil {
+		t.Error("field Permitted should not be able to re-allow characters rejected by the Kind")
 	}
 }
 
 func TestFieldValidate_NotNull_EmptyValue(t *testing.T) {
-	var called bool
-	stub := &stubInputWithCallback{
-		stubInput: stubInput{kind: "text"},
-		callback:  func() { called = true },
-	}
 	f := Field{
 		Name:    "name",
 		NotNull: true,
-		Widget:  stub,
+		Type:    Text(),
 	}
 
 	if err := f.Validate(""); err == nil {
 		t.Error("expected error for NotNull, got nil")
 	}
-
-	if called {
-		t.Error("Widget.Validate should NOT have been called for empty value when NotNull fails")
-	}
-}
-
-type stubInputWithCallback struct {
-	stubInput
-	callback func()
-}
-
-func (s *stubInputWithCallback) Validate(v string) error {
-	s.callback()
-	return s.stubInput.Validate(v)
-}
-
-func TestWidgetType(t *testing.T) {
-	s := stubInput{kind: "email"}
-	if s.Type() != "email" {
-		t.Errorf("expected Type() = \"email\", got %q", s.Type())
-	}
-}
-
-func TestWidgetClone(t *testing.T) {
-	s := stubInput{kind: "textarea"}
-	c := s.Clone("parent", "field")
-	if c == nil {
-		t.Fatal("Clone() returned nil")
-	}
-	if c.Type() != "textarea" {
-		t.Errorf("Clone().Type() = %q, want \"textarea\"", c.Type())
-	}
-	// Clone must be independent — mutating original should not affect clone
-	// (value receiver, so already independent by definition)
-}
-
-func TestFieldValidate_WidgetRunsBeforePermitted(t *testing.T) {
-	// Widget fails → Permitted must NOT be evaluated (order: Widget first)
-	permittedCalled := false
-	// Use a Permitted that would succeed — if it's called, we detect it via a custom Permitted
-	// Instead: use Widget that fails + Permitted that would also fail, then check error source
-	f := Field{
-		Name:      "field",
-		Widget:    stubInput{kind: "text"}, // fails on "invalid"
-		Permitted: Permitted{Minimum: 100}, // would also fail (too short)
-	}
-	err := f.Validate("invalid")
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	// Error must come from Widget (contains "text"), not from Permitted (contains "minimum")
-	msg := err.Error()
-	if !containsAny(msg, "invalid value") {
-		t.Errorf("expected Widget error, got: %q", msg)
-	}
-	_ = permittedCalled
-}
-
-func containsAny(s string, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsStr(s, substr))
-}
-
-func containsStr(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }
 
 func TestFieldZeroValue(t *testing.T) {
@@ -185,8 +117,8 @@ func TestFieldZeroValue(t *testing.T) {
 	if f.Name != "" {
 		t.Errorf("expected empty Name, got %v", f.Name)
 	}
-	if f.Type != FieldText {
-		t.Errorf("expected FieldText type, got %v", f.Type)
+	if f.Type != nil {
+		t.Errorf("expected nil Type, got %v", f.Type)
 	}
 	if f.IsPK() || f.IsUnique() || f.NotNull || f.IsAutoInc() {
 		t.Errorf("expected all bools false, got PK=%v, Unique=%v, NotNull=%v, AutoInc=%v", f.IsPK(), f.IsUnique(), f.NotNull, f.IsAutoInc())
@@ -203,7 +135,7 @@ func TestFieldOmitEmpty(t *testing.T) {
 func TestFieldConstraints(t *testing.T) {
 	f := Field{
 		Name:    "id",
-		Type:    FieldInt,
+		Type:    Int(),
 		NotNull: true,
 		DB: &FieldDB{
 			PK:      true,
@@ -214,8 +146,8 @@ func TestFieldConstraints(t *testing.T) {
 	if f.Name != "id" {
 		t.Errorf("expected Name 'id', got %v", f.Name)
 	}
-	if f.Type != FieldInt {
-		t.Errorf("expected FieldInt type, got %v", f.Type)
+	if f.Type.Storage() != FieldInt {
+		t.Errorf("expected FieldInt storage, got %v", f.Type.Storage())
 	}
 	if !f.IsPK() {
 		t.Error("expected PK true")
@@ -238,22 +170,12 @@ func TestFieldValidate(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
-		{"NotNull empty", Field{NotNull: true}, "", true},
-		{"NotNull not empty", Field{NotNull: true}, "foo", false},
-		{"Nullable empty", Field{NotNull: false}, "", false},
-		{"With rules pass", Field{Permitted: Permitted{Numbers: true}}, "123", false},
-		{"With rules fail", Field{Permitted: Permitted{Numbers: true}}, "abc", true},
-		{"No rules pass", Field{Name: "any"}, "any value", false},
-		{"Only Minimum with Widget ok", Field{
-			Name:      "name",
-			Widget:    stubInput{kind: "text"},
-			Permitted: Permitted{Minimum: 2},
-		}, "María", false},
-		{"Only Minimum with Widget fail length", Field{
-			Name:      "name",
-			Widget:    stubInput{kind: "text"},
-			Permitted: Permitted{Minimum: 10},
-		}, "abc", true},
+		{"NotNull empty", Field{NotNull: true, Type: Text()}, "", true},
+		{"NotNull not empty", Field{NotNull: true, Type: Text()}, "foo", false},
+		{"Nullable empty", Field{NotNull: false, Type: Text()}, "", false},
+		{"With rules pass", Field{Type: Text(), Permitted: Permitted{Numbers: true}}, "123", false},
+		{"With rules fail", Field{Type: Text(), Permitted: Permitted{Numbers: true}}, "abc", true},
+		{"No rules pass", Field{Name: "any", Type: Text()}, "any value", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -282,19 +204,19 @@ type fullMock struct {
 
 func (m *fullMock) Schema() []Field {
 	return []Field{
-		{Name: "text", Type: FieldText, NotNull: true},
-		{Name: "int", Type: FieldInt, NotNull: true},
-		{Name: "int32", Type: FieldInt},
-		{Name: "int64", Type: FieldInt},
-		{Name: "u", Type: FieldInt},
-		{Name: "u32", Type: FieldInt},
-		{Name: "u64", Type: FieldInt},
-		{Name: "float", Type: FieldFloat, NotNull: true},
-		{Name: "float32", Type: FieldFloat},
-		{Name: "bool", Type: FieldBool, NotNull: true},
-		{Name: "blob", Type: FieldBlob, NotNull: true},
-		{Name: "raw", Type: FieldRaw, NotNull: true},
-		{Name: "nested", Type: FieldStruct, NotNull: true},
+		{Name: "text", Type: Text(), NotNull: true},
+		{Name: "int", Type: Int(), NotNull: true},
+		{Name: "int32", Type: Int()},
+		{Name: "int64", Type: Int()},
+		{Name: "u", Type: Int()},
+		{Name: "u32", Type: Int()},
+		{Name: "u64", Type: Int()},
+		{Name: "float", Type: Float(), NotNull: true},
+		{Name: "float32", Type: Float()},
+		{Name: "bool", Type: Bool(), NotNull: true},
+		{Name: "blob", Type: Blob(), NotNull: true},
+		{Name: "raw", Type: Raw(), NotNull: true},
+		{Name: "nested", Type: Struct(), NotNull: true},
 	}
 }
 
@@ -309,8 +231,8 @@ type mockUser struct {
 
 func (m *mockUser) Schema() []Field {
 	return []Field{
-		{Name: "id", Type: FieldText, DB: &FieldDB{PK: true}},
-		{Name: "name", Type: FieldText, NotNull: true},
+		{Name: "id", Type: Text(), DB: &FieldDB{PK: true}},
+		{Name: "name", Type: Text(), NotNull: true},
 	}
 }
 func (m *mockUser) Pointers() []any            { return []any{&m.id, &m.name} }
@@ -523,13 +445,13 @@ type fielderOnlyMock struct {
 	id string
 }
 
-func (m *fielderOnlyMock) Schema() []Field { return []Field{{Name: "id", Type: FieldText}} }
+func (m *fielderOnlyMock) Schema() []Field { return []Field{{Name: "id", Type: Text()}} }
 func (m *fielderOnlyMock) Pointers() []any { return []any{&m.id} }
 
 func TestValidateFieldsWithOnlyFielder(t *testing.T) {
 	// Nested struct that only implements Fielder, not Validator.
 	sub := &fielderOnlyMock{id: "ok"}
-	schema := []Field{{Name: "sub", Type: FieldStruct}}
+	schema := []Field{{Name: "sub", Type: Struct()}}
 	ptrs := []any{sub}
 
 	// Validate it through the manualFielder helper
@@ -548,11 +470,11 @@ func TestValidateFieldsActions(t *testing.T) {
 	}
 
 	schema := []Field{
-		{Name: "id", Type: FieldInt, DB: &FieldDB{PK: true, AutoInc: true}},
-		{Name: "name", Type: FieldText, NotNull: true},
-		{Name: "email", Type: FieldText, Permitted: Permitted{Letters: true, Extra: []rune{'@', '.'}}},
-		{Name: "raw", Type: FieldRaw, NotNull: true},
-		{Name: "version", Type: FieldInt, NotNull: true},
+		{Name: "id", Type: Int(), DB: &FieldDB{PK: true, AutoInc: true}},
+		{Name: "name", Type: Text(), NotNull: true},
+		{Name: "email", Type: Text(), Permitted: Permitted{Letters: true, Extra: []rune{'@', '.'}}},
+		{Name: "raw", Type: Raw(), NotNull: true},
+		{Name: "version", Type: Int(), NotNull: true},
 	}
 
 	// Helper to create manual Fielder

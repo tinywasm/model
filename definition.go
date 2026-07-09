@@ -12,7 +12,7 @@ type Fields = []Field
 // the schema literal is now authored by hand and everything else is derived.
 type Definition struct {
 	Name   string // model identity: table name, ModelName(), route key
-	Fields Fields // ordered schema; widgets come from any model.Widget (e.g. form/input)
+	Fields Fields // ordered schema; Kinds come from model (e.g. model.Text())
 }
 
 // Field returns the field with the given name and true, or a zero Field and false.

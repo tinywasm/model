@@ -28,6 +28,34 @@ Returns the string representation of the `FieldType`.
 model.FieldInt.String() // returns "int"
 ```
 
+## Kind Interface
+
+`Kind` replaces the old `FieldType` enum slot + `Widget` pair. It represents both the storage mapping and the semantic validation baseline. Implementations are stateless templates, safe for concurrent reuse.
+
+```go
+type Kind interface {
+    Storage() FieldType          // deterministic Go/DDL mapping
+    Name() string                // semantic name: "text", "int", "email", …
+    Validate(value string) error // ALWAYS present — fail-closed
+}
+```
+
+### Base Kinds
+
+The `model` package provides constructors for base kinds covering every `FieldType`:
+
+| Constructor | Storage | Validation Baseline |
+|-------------|---------|---------------------|
+| `Text()` | `FieldText` | digits, letters, spaces, common punctuation. Excludes `<>"'&`. |
+| `Int()` | `FieldInt` | digits and optional leading `-`. |
+| `Float()` | `FieldFloat` | digits, at most one `.`, and optional leading `-`. |
+| `Bool()` | `FieldBool` | accepts `"true"`, `"false"`, `"1"`, `"0"`, `""`. |
+| `Blob()` | `FieldBlob` | binary data (no content validation). |
+| `Raw()` | `FieldRaw` | pre-serialized JSON (no content validation). |
+| `Struct()` | `FieldStruct` | nested struct (no string validation). |
+| `IntSlice()` | `FieldIntSlice` | slice of integers (no string validation). |
+| `StructSlice()` | `FieldStructSlice` | slice of structs (no string validation). |
+
 ## Definition
 
 `Definition` is the hand-written, fully-typed source of truth for a model. From a `Definition`, the `ormc` generator produces the concrete Go struct and its zero-reflection plumbing.
@@ -37,7 +65,7 @@ This inverts the previous flow (struct + string tags → generated schema): the 
 ```go
 type Definition struct {
     Name   string // model identity: table name, ModelName(), route key
-    Fields Fields // ordered schema; widgets come from any model.Widget (e.g. form/input)
+    Fields Fields // ordered schema; Kinds come from model constructors (e.g. model.Text())
 }
 ```
 
@@ -64,12 +92,11 @@ field, ok := UserModel.Field("email")
 ```go
 type Field struct {
     Name      string
-    Type      FieldType
+    Type      Kind
     NotNull   bool
     OmitEmpty bool        // omit from JSON when zero value
-    Widget    Widget      // semantic input type; nil = no UI binding (set by ormc from `input:` tag)
     DB        *FieldDB    // nil for formonly/transport structs
-    Ref       *Definition // composition OR scalar FK — disambiguated by Type, see below
+    Ref       *Definition // composition OR scalar FK — disambiguated by Type.Storage(), see below
     Exclude   bool        // field exists on the generated struct but is excluded from
                           // Pointers()/EncodeFields()/DecodeFields() — no persistence, no wire codec
     Permitted             // embedded: validation rules (characters, min/max)
@@ -96,14 +123,14 @@ the struct needs to carry in memory but that has no business going through `Poin
 // but omits it from Pointers()/EncodeFields()/DecodeFields()
 ```
 
-### Ref — two meanings, disambiguated by Type
+### Ref — two meanings, disambiguated by Type.Storage()
 
-`Ref *Definition` means one of two unrelated things depending on `Type` — never both at once:
+`Ref *Definition` means one of two unrelated things depending on `Type.Storage()` — never both at once:
 
-- **`Type` is `FieldStruct`/`FieldStructSlice` → composition.** `Ref` is the nested `Definition`; the
+- **`Storage()` is `FieldStruct`/`FieldStructSlice` → composition.** `Ref` is the nested `Definition`; the
   field's Go type comes from it. The nested value is part of THIS struct's own
   `Schema()`/`Pointers()`/codec (e.g. an embedded `Address` value).
-- **`Type` is a scalar (`FieldText`/`FieldInt`/...) → scalar foreign key.** `Ref` is the `Definition`
+- **`Storage()` is a scalar (`FieldText`/`FieldInt`/...) → scalar foreign key.** `Ref` is the `Definition`
   of the table this column references (e.g. `staff_id int64` pointing to `StaffModel`). It drives DDL
   foreign-key constraint generation (`orm.FieldExt`/`SchemaExt()`), using `FieldDB.RefColumn`/
   `FieldDB.OnDelete` for details. It does **not** change the field's Go type — that stays the plain
@@ -111,10 +138,10 @@ the struct needs to carry in memory but that has no business going through `Poin
 
 ```go
 // composition: Order embeds a ShippingAddress value
-{Name: "shipping_address", Type: model.FieldStruct, Ref: &AddressModel}
+{Name: "shipping_address", Type: model.Struct(), Ref: &AddressModel}
 
 // scalar FK: staff_id is an int64 column, but it's a foreign key into "staff"
-{Name: "staff_id", Type: model.FieldInt, NotNull: true, Ref: &StaffModel,
+{Name: "staff_id", Type: model.Int(), NotNull: true, Ref: &StaffModel,
     DB: &model.FieldDB{RefColumn: "id", OnDelete: "CASCADE"}}
 ```
 
@@ -126,9 +153,9 @@ handle it explicitly.
 
 ### Type Mapping
 
-`Field.Type` maps deterministically to a Go type. `ormc` uses this mapping to generate the concrete struct fields.
+`Field.Type.Storage()` maps deterministically to a Go type. `ormc` uses this mapping to generate the concrete struct fields.
 
-| `Field.Type` | Go Type |
+| `Storage()` | Go Type |
 |---|---|
 | `FieldText`, `FieldRaw` | `string` |
 | `FieldInt` | `int64` |
@@ -184,32 +211,6 @@ type Result struct {
 2. `ormc` code generation detects the type name and marks the field as `FieldRaw` in the Schema()
 3. `tinywasm/json` encoder checks `Type == FieldRaw` and emits the value inline (no quoting or re-serializing)
 
-## Widget Interface
-
-`Widget` is the contract for a semantic input type. It is implemented by `tinywasm/form/input` types and by custom project inputs defined in `web/inputs/`. Set by `ormc` code generation from the `input:` struct tag.
-
-```go
-type Widget interface {
-    Type() string                              // Semantic type name (e.g., "email", "textarea")
-    Validate(value string) error               // Semantic validation for this input type
-    Clone(parentID, name string) Widget        // Returns a positioned instance; pass ("","") for a bare template
-}
-```
-
-`Field.Validate()` calls `Widget.Validate()` before `Permitted.Validate()`. If the widget fails, `Permitted` is not evaluated. If `Widget` is `nil`, only `Permitted` rules apply.
-
-```go
-// Example: field with Widget + additive Permitted rules
-Field{
-    Name:      "email",
-    Widget:    input.NewEmail(),            // validates email format
-    Permitted: model.Permitted{Minimum: 10}, // additionally enforces min length
-}
-```
-
-**Why `Clone(parentID, name)` instead of `Clone()`:** The form layer always needs positioned instances for rendering. A parameterless `Clone()` would force a separate `Build()` method — two constructors for the same concern. With `Clone(parentID, name)`, consumers that only need a bare template pass `("", "")`, and form consumers get a positioned instance directly.
-
-**Why not include `RenderHTML()`:** Interface Segregation — ORM and validation consumers need only `Type()` and `Validate()`. Rendering is handled by `tinywasm/form`, which type-asserts `field.Widget.Clone(parentID, name).(input.Input)` for HTML output.
 
 ### Validation (Permitted)
 
@@ -231,7 +232,7 @@ Validation rules are embedded in the `Field` via the `Permitted` struct. This in
 
 ### Field.Validate()
 
-Checks a string value against the field's constraints in order: `NotNull` → `Widget.Validate()` → `Permitted`.
+Checks a string value against the field's constraints in order: `NotNull` → `Kind.Validate()` (baseline) → `Permitted` (length) → `Permitted` (chars).
 
 ```go
 err := field.Validate("some value")
@@ -363,8 +364,8 @@ type User struct {
 
 func (u *User) Schema() []model.Field {
     return []model.Field{
-        {Name: "id", Type: model.FieldText, DB: &model.FieldDB{PK: true}},
-        {Name: "name", Type: model.FieldText, NotNull: true, Permitted: model.Permitted{Letters: true}},
+        {Name: "id", Type: model.Text(), DB: &model.FieldDB{PK: true}},
+        {Name: "name", Type: model.Text(), NotNull: true, Permitted: model.Permitted{Letters: true}},
     }
 }
 

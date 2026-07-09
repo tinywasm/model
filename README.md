@@ -31,18 +31,20 @@ go get github.com/tinywasm/model
 
 ### Defining a Model Definition
 
-The source of truth for a model is now a `Definition` literal:
+The source of truth for a model is a `model.Definition` literal. This package uses **fail-closed validation**: validation used to be opt-in (`Widget: nil` meant no validation), which contradicted the ecosystem's design doctrine. Now, every field has a `Type` (Kind) that provides a baseline validation floor.
 
 ```go
 var UserModel = model.Definition{
     Name: "user",
     Fields: model.Fields{
-        {Name: "id",    Type: model.FieldInt,  DB: &model.FieldDB{PK: true, AutoInc: true}},
-        {Name: "name",  Type: model.FieldText, NotNull: true, Permitted: model.Permitted{Minimum: 2}},
-        {Name: "email", Type: model.FieldText, NotNull: true},
+        {Name: "id",    Type: model.Int(),  DB: &model.FieldDB{PK: true, AutoInc: true}},
+        {Name: "name",  Type: model.Text(), NotNull: true, Permitted: model.Permitted{Minimum: 2}},
+        {Name: "email", Type: model.Text(), NotNull: true},
     },
 }
 ```
+
+**Why fail-closed?** Validation is no longer optional. A resource left reachable because nobody explicitly configured a widget is a silent failure. Standard kinds like `model.Text()` provide an input-boundary XSS floor by default. Use `model.Raw()` or `model.Blob()` only when you explicitly need an unvalidated escape hatch — these are easily auditable via grep.
 
 ### Defining a Schema
 
@@ -61,18 +63,18 @@ func (u *User) Schema() []model.Field {
     return []model.Field{
         {
             Name: "id",
-            Type: model.FieldText,
+            Type: model.Text(),
             DB:   &model.FieldDB{PK: true},
         },
         {
             Name:      "name",
-            Type:      model.FieldText,
+            Type:      model.Text(),
             NotNull:   true,
             Permitted: model.Permitted{Letters: true, Spaces: true},
         },
         {
             Name: "age",
-            Type: model.FieldInt,
+            Type: model.Int(),
         },
     }
 }
@@ -133,8 +135,8 @@ func (u *User) DecodeFields(r model.FieldReader) {
 | Concern | Type | Used By |
 |---------|------|---------|
 | **DDL & Column Metadata** | `Field.DB` | `orm`, `sqlt`, `postgres` |
-| **Data Validation** | `Field` + `Permitted` | `orm`, `form`, `json` |
-| **UI Bindings** | `Field.Widget` | `form`, `ormc` codegen |
+| **Data Validation** | `Field.Type` + `Permitted` | `orm`, `form`, `json` |
+| **UI Bindings** | `Field.Type` (Kind) | `form`, `ormc` codegen |
 | **SQL Scanning** | `Pointers()` | `orm/qb` (positional via `database/sql`) |
 | **Serialization** | `Encodable`/`Decodable` + codec | `json`, `jsvalue`, transports |
 
@@ -145,7 +147,7 @@ One schema (`Field`) serves all layers. Serialization uses the typed codec (`Enc
 - [`tinywasm/fmt`](../fmt/) - String manipulation and conversion
 - [`tinywasm/orm`](../orm/) - Database layer (uses `Schema()`, `Pointers()`, `Validate()`)
 - [`tinywasm/json`](../json/) - JSON encoder/decoder (uses codec)
-- [`tinywasm/form`](../form/) - Form handling and widgets (uses `Field` + `Widget`)
+- [`tinywasm/form`](../form/) - Form handling (uses `Field` + `Kind`)
 
 ---
 
