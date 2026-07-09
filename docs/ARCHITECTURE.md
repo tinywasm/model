@@ -50,8 +50,10 @@ duplicación de escribir *struct + tags*. Lo confirmado del resto del refactor:
 - **Generación:** se mantiene, pero alimentada por **tipos**, no por strings.
 - **Rollout:** big-bang por capas (`model` es el ancla).
 - **Despacho:** secuencial con gate vía el doc maestro.
-- **Widget:** es una **interfaz** (ya lo es en [interface.go](../interface.go)); `tinywasm/form/input`
-  es **una** implementación opcional. Cualquiera puede escribir sus propios widgets sin acoplarse.
+- **Kind:** replaces the old `FieldType` enum + `Widget` pair. It is an interface
+  providing both the storage mapping (`Storage()`) and the semantic validation baseline
+  (`Validate()`). standard Kinds like `Text()`, `Int()` provide an input-boundary
+  XSS floor by default.
 
 ---
 
@@ -198,7 +200,40 @@ desaparece, se muda del schema al acceso, y encima añade allocs en el hot path.
 
 ---
 
-## 8. Nota sobre el mecanismo de generación (AST vs importar-y-reflect)
+## 8. Validation design (Kind unification)
+
+The ecosystem's design doctrine (typed over `any`, illegal states unrepresentable,
+closed by default) was previously violated by the `Field` shape where validation
+was opt-in (`Widget: nil` meant no validation).
+
+### Rationale
+
+- **Kind replaces Type+Widget**: This eliminates the "fail-open" default and the
+  "expressible contradiction" (e.g., `{Type: FieldInt, Widget: Email()}`). One
+  typed slot means one decision.
+- **Interface name `Kind`**: Chosen to avoid stutter (`Type Type`) and collision
+  with `go/types.Type`. `Widget` connoted UI, while `Kind` correctly describes
+  field classification (matching `protoreflect.Kind` precedent).
+- **Fail-closed**: Every field must have a `Kind`. `Field.Validate` is
+  unconditional. Standard kinds provide the input-boundary XSS floor (A03).
+- **NotNull as direct member**: Presence is a different contract than content
+  validation. Keeping it on `Field` allows better authoring ergonomics in
+  composite literals and is consumed by DDL, codec, and form layers.
+- **Permitted's dual role**: It serves as the engine inside Kinds for baseline
+  rules and remains on `Field` for per-usage tightening.
+- **Monotonic Composition**: Validation follows the order `NotNull` → `Kind` →
+  `Permitted`. A field's `Permitted` rules can only TIGHTEN the constraints;
+  the Kind's rejection is final.
+
+### OWASP Scope
+
+`tinywasm/model` is the input-validation boundary for the ecosystem:
+- **A03: Injection/XSS**: Handled by `Text()` kind's whitelist floor.
+- **A04: Insecure Design**: Handled by the fail-closed architecture.
+
+---
+
+## 9. Nota sobre el mecanismo de generación (AST vs importar-y-reflect)
 
 Se planteó si conviene que el generador **importe el paquete y lea `UserModel` por reflect** (en
 build-time, donde reflect sí está permitido) en vez de **parsear el AST** como hoy. Conclusión:
@@ -227,11 +262,11 @@ El mecanismo actual no solo sirve: es el correcto para un generador que vive den
 Si se confirma **Opción A**:
 
 - **model** (ancla): define `model.Definition{Name, Fields}` y `type Fields = []Field`; mantiene
-  `Field` y `Widget` (interfaz). Cero dependencias. **No hay paquete `field`**: la `Definition` se
+  `Field` and `Kind` (interfaz). Cero dependencias. **No hay paquete `field`**: la `Definition` se
   escribe con literales `model.Field{...}`.
 - **widgets**: cualquier `model.Widget`. `tinywasm/form/input` (`input.Text()`, `input.Email()`, …)
   es la fuente básica y **opcional**.
 - **orm/ormc:** invierte el generador — lee el literal `model.Definition` por AST y emite el struct
   concreto + `Schema/Pointers/codec/List`.
 - **json / form:** consumen el mismo `Fielder`; cambian su *entrada de definición*, no el hot path.
-- **postgres:** consume `Schema()` igual; revisar introspección/DDL contra los nuevos `field.*`.
+- **postgres:** consume `Schema()` igual; revisar introspección/DDL contra los nuevos Kinds.
