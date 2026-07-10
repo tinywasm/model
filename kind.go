@@ -138,13 +138,38 @@ func Raw() Kind {
 	}
 }
 
-// Struct returns the base Struct kind.
-// No string validation (nested Fielder validates itself).
-func Struct() Kind {
-	return baseKind{
-		storage: FieldStruct,
-		name:    fieldTypeNames[FieldStruct],
-		valid:   func(string) error { return nil },
+// RefKind is implemented by composition kinds (Struct, StructSlice).
+// Consumers (ormc, orm relations) read the nested Definition from here.
+type RefKind interface {
+	Kind
+	Ref() *Definition
+}
+
+type refKind struct {
+	baseKind
+	ref *Definition
+}
+
+func (k refKind) Ref() *Definition { return k.ref }
+
+func (k refKind) Validate(value string) error {
+	if k.ref == nil {
+		return fmt.Err(k.name, "ref required")
+	}
+	return k.baseKind.Validate(value)
+}
+
+// Struct returns the composition kind nesting the given Definition.
+// The ref is REQUIRED: ormc derives the generated Go field type from it.
+// No string validation (the nested Fielder validates itself, fail-closed).
+func Struct(ref *Definition) Kind {
+	return refKind{
+		baseKind: baseKind{
+			storage: FieldStruct,
+			name:    fieldTypeNames[FieldStruct],
+			valid:   func(string) error { return nil },
+		},
+		ref: ref,
 	}
 }
 
@@ -158,12 +183,15 @@ func IntSlice() Kind {
 	}
 }
 
-// StructSlice returns the base StructSlice kind.
-// No string validation.
-func StructSlice() Kind {
-	return baseKind{
-		storage: FieldStructSlice,
-		name:    fieldTypeNames[FieldStructSlice],
-		valid:   func(string) error { return nil },
+// StructSlice returns the composition kind nesting a slice of the given
+// Definition. Same contract as Struct.
+func StructSlice(ref *Definition) Kind {
+	return refKind{
+		baseKind: baseKind{
+			storage: FieldStructSlice,
+			name:    fieldTypeNames[FieldStructSlice],
+			valid:   func(string) error { return nil },
+		},
+		ref: ref,
 	}
 }

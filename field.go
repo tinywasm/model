@@ -49,7 +49,8 @@ type FieldDB struct {
 	AutoInc bool
 
 	// RefColumn/OnDelete apply only when the owning Field is a scalar foreign key
-	// (Field.Ref set, Field.Type NOT FieldStruct/FieldStructSlice — see Field.Ref doc).
+	// (Field.Ref set — composition kinds carry their ref in the constructor and
+	// never set Field.Ref; see Field.Ref doc).
 	// Both are optional: RefColumn empty = auto-detect the PK of Ref's table;
 	// OnDelete empty = generator default (e.g. CASCADE).
 	RefColumn string
@@ -74,22 +75,24 @@ type FieldDB struct {
 // | FieldBool | bool |
 // | FieldBlob | []byte |
 // | FieldIntSlice | []int |
-// | FieldStruct | Ref type (required) |
-// | FieldStructSlice | [] of Ref type (required) |
+// | FieldStruct | type of the kind's ref — Struct(ref) |
+// | FieldStructSlice | [] of the kind's ref — StructSlice(ref) |
 type Field struct {
 	Name      string
 	Type      Kind
 	NotNull   bool
 	OmitEmpty bool     // omit from JSON when zero value
 	DB        *FieldDB // nil for formonly/transport structs
-	// Ref has two meanings, disambiguated by Type.Storage() — never both at once:
-	//   - Type is FieldStruct/FieldStructSlice: composition. Ref is the nested Definition;
-	//     the field's Go type comes from it (embedded/nested value, part of THIS struct's own
-	//     Schema()/Pointers()/codec).
-	//   - Type is a scalar (FieldText/FieldInt/...): scalar foreign key. Ref is the Definition
-	//     of the table this column points to (e.g. a "staff_id int64" referencing StaffModel).
-	//     Drives DDL FK constraint generation (orm.FieldExt/SchemaExt) — see FieldDB.RefColumn/OnDelete.
-	//     Does NOT change the field's Go type, which stays the plain scalar mapping from Type.
+	// Ref is the Definition of the table this column references (scalar foreign key).
+	// e.g. a "staff_id int64" field pointing to StaffModel. It drives DDL FK constraint
+	// generation (orm.FieldExt/SchemaExt) — see FieldDB.RefColumn/OnDelete.
+	// It does NOT change the field's Go type, which stays the plain scalar mapping from Type.
+	//
+	// Composition (FieldStruct/FieldStructSlice) no longer uses this slot; the nested
+	// Definition is now a mandatory parameter of the Kind constructor (model.Struct(ref)).
+	// Setting Field.Ref on a composition field is a contradiction and results in a
+	// generation error in ormc.
+	//
 	// A *Definition with a bidirectional Ref to another package-level Definition in the same
 	// package cannot be expressed as a single literal (Go rejects it: "initialization cycle") —
 	// this is a Go language limitation, not a model design gap. Two-phase assignment via init()

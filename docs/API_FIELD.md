@@ -52,9 +52,20 @@ The `model` package provides constructors for base kinds covering every `FieldTy
 | `Bool()` | `FieldBool` | accepts `"true"`, `"false"`, `"1"`, `"0"`, `""`. |
 | `Blob()` | `FieldBlob` | binary data (no content validation). |
 | `Raw()` | `FieldRaw` | pre-serialized JSON (no content validation). |
-| `Struct()` | `FieldStruct` | nested struct (no string validation). |
+| `Struct(ref)` | `FieldStruct` | nested struct (no string validation). |
 | `IntSlice()` | `FieldIntSlice` | slice of integers (no string validation). |
-| `StructSlice()` | `FieldStructSlice` | slice of structs (no string validation). |
+| `StructSlice(ref)` | `FieldStructSlice` | slice of structs (no string validation). |
+
+### RefKind Interface
+
+`RefKind` is implemented by composition kinds (`Struct`, `StructSlice`). It allows consumers to access the nested `Definition`.
+
+```go
+type RefKind interface {
+    Kind
+    Ref() *Definition
+}
+```
 
 ## Definition
 
@@ -96,7 +107,7 @@ type Field struct {
     NotNull   bool
     OmitEmpty bool        // omit from JSON when zero value
     DB        *FieldDB    // nil for formonly/transport structs
-    Ref       *Definition // composition OR scalar FK — disambiguated by Type.Storage(), see below
+    Ref       *Definition // scalar FK only. Composition uses the Kind parameter (see below).
     Exclude   bool        // field exists on the generated struct but is excluded from
                           // Pointers()/EncodeFields()/DecodeFields() — no persistence, no wire codec
     Permitted             // embedded: validation rules (characters, min/max)
@@ -104,10 +115,10 @@ type Field struct {
 
 type FieldDB struct {
     PK        bool
-    Unique    bool
-    AutoInc   bool
-    RefColumn string // scalar FK only: column in Ref's table. Empty = auto-detect its PK.
-    OnDelete  string // scalar FK only: ON DELETE action. Empty = generator default (e.g. CASCADE).
+    Unique  bool
+    AutoInc bool
+    RefColumn string // column in Ref's table. Empty = auto-detect its PK.
+    OnDelete  string // ON DELETE action. Empty = generator default (e.g. CASCADE).
 }
 ```
 
@@ -123,22 +134,19 @@ the struct needs to carry in memory but that has no business going through `Poin
 // but omits it from Pointers()/EncodeFields()/DecodeFields()
 ```
 
-### Ref — two meanings, disambiguated by Type.Storage()
+### Ref — scalar foreign key meaning
 
-`Ref *Definition` means one of two unrelated things depending on `Type.Storage()` — never both at once:
+`Ref *Definition` is the `Definition` of the table this column references (e.g. `staff_id int64`
+pointing to `StaffModel`). It drives DDL foreign-key constraint generation (`orm.FieldExt`/`SchemaExt()`),
+using `FieldDB.RefColumn`/`FieldDB.OnDelete` for details. It does **not** change the field's Go type —
+that stays the plain scalar mapping from `Type`.
 
-- **`Storage()` is `FieldStruct`/`FieldStructSlice` → composition.** `Ref` is the nested `Definition`; the
-  field's Go type comes from it. The nested value is part of THIS struct's own
-  `Schema()`/`Pointers()`/codec (e.g. an embedded `Address` value).
-- **`Storage()` is a scalar (`FieldText`/`FieldInt`/...) → scalar foreign key.** `Ref` is the `Definition`
-  of the table this column references (e.g. `staff_id int64` pointing to `StaffModel`). It drives DDL
-  foreign-key constraint generation (`orm.FieldExt`/`SchemaExt()`), using `FieldDB.RefColumn`/
-  `FieldDB.OnDelete` for details. It does **not** change the field's Go type — that stays the plain
-  scalar mapping from `Type`.
+Composition (`FieldStruct`/`FieldStructSlice`) no longer uses this slot; the nested `Definition` is
+passed directly to the kind constructor (`model.Struct(ref)`).
 
 ```go
 // composition: Order embeds a ShippingAddress value
-{Name: "shipping_address", Type: model.Struct(), Ref: &AddressModel}
+{Name: "shipping_address", Type: model.Struct(&AddressModel)}
 
 // scalar FK: staff_id is an int64 column, but it's a foreign key into "staff"
 {Name: "staff_id", Type: model.Int(), NotNull: true, Ref: &StaffModel,
@@ -163,8 +171,8 @@ handle it explicitly.
 | `FieldBool` | `bool` |
 | `FieldBlob` | `[]byte` |
 | `FieldIntSlice` | `[]int` |
-| `FieldStruct` | type of `Ref` (required) |
-| `FieldStructSlice` | `[]` of type of `Ref` (required) |
+| `FieldStruct` | type of the kind's ref — `Struct(ref)` |
+| `FieldStructSlice` | `[]` of the kind's ref — `StructSlice(ref)` |
 
 ## FieldDB
 

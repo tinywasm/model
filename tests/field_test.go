@@ -216,7 +216,7 @@ func (m *fullMock) Schema() []Field {
 		{Name: "bool", Type: Bool(), NotNull: true},
 		{Name: "blob", Type: Blob(), NotNull: true},
 		{Name: "raw", Type: Raw(), NotNull: true},
-		{Name: "nested", Type: Struct(), NotNull: true},
+		{Name: "nested", Type: Struct(&Definition{Name: "user"}), NotNull: true},
 	}
 }
 
@@ -451,7 +451,7 @@ func (m *fielderOnlyMock) Pointers() []any { return []any{&m.id} }
 func TestValidateFieldsWithOnlyFielder(t *testing.T) {
 	// Nested struct that only implements Fielder, not Validator.
 	sub := &fielderOnlyMock{id: "ok"}
-	schema := []Field{{Name: "sub", Type: Struct()}}
+	schema := []Field{{Name: "sub", Type: Struct(&Definition{Name: "sub"})}}
 	ptrs := []any{sub}
 
 	// Validate it through the manualFielder helper
@@ -574,4 +574,46 @@ func (m *mockFielderSlice) Append() Fielder  { return nil }
 func TestFielderSliceEmbedsFielder(t *testing.T) {
 	var _ Fielder = (FielderSlice)(nil)
 	var _ Fielder = (*mockFielderSlice)(nil)
+}
+
+func TestRefKind(t *testing.T) {
+	def := &Definition{Name: "user"}
+	kinds := []struct {
+		name string
+		kind Kind
+	}{
+		{"struct", Struct(def)},
+		{"structslice", StructSlice(def)},
+	}
+
+	for _, tt := range kinds {
+		t.Run(tt.name, func(t *testing.T) {
+			rk, ok := tt.kind.(RefKind)
+			if !ok {
+				t.Fatalf("%s kind does not implement RefKind", tt.name)
+			}
+			if rk.Ref() != def {
+				t.Errorf("Ref() = %v, want %v", rk.Ref(), def)
+			}
+			if err := tt.kind.Validate("any"); err != nil {
+				t.Errorf("Validate() failed: %v", err)
+			}
+		})
+	}
+}
+
+func TestNilRefBackstop(t *testing.T) {
+	kinds := []Kind{Struct(nil), StructSlice(nil)}
+	for _, k := range kinds {
+		t.Run(k.Name(), func(t *testing.T) {
+			err := k.Validate("x")
+			if err == nil {
+				t.Error("expected error for nil ref, got nil")
+			}
+			f := Field{Name: "f", Type: k}
+			if err := f.Validate("x"); err == nil {
+				t.Error("expected Field.Validate to fail for nil ref kind")
+			}
+		})
+	}
 }
