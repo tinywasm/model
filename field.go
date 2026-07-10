@@ -49,7 +49,8 @@ type FieldDB struct {
 	AutoInc bool
 
 	// RefColumn/OnDelete apply only when the owning Field is a scalar foreign key
-	// (Field.Ref set, Field.Type NOT FieldStruct/FieldStructSlice — see Field.Ref doc).
+	// (Field.Ref set — composition kinds carry their ref in the constructor and
+	// never set Field.Ref; see Field.Ref doc).
 	// Both are optional: RefColumn empty = auto-detect the PK of Ref's table;
 	// OnDelete empty = generator default (e.g. CASCADE).
 	RefColumn string
@@ -74,8 +75,8 @@ type FieldDB struct {
 // | FieldBool | bool |
 // | FieldBlob | []byte |
 // | FieldIntSlice | []int |
-// | FieldStruct | Ref type (required) |
-// | FieldStructSlice | [] of Ref type (required) |
+// | FieldStruct | type of the kind's ref — Struct(ref) |
+// | FieldStructSlice | [] of the kind's ref — StructSlice(ref) |
 type Field struct {
 	Name      string
 	Type      Kind

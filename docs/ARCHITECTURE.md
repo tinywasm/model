@@ -225,6 +225,15 @@ was opt-in (`Widget: nil` meant no validation).
 - **Monotonic Composition**: Validation follows the order `NotNull` → `Kind` →
   `Permitted`. A field's `Permitted` rules can only TIGHTEN the constraints;
   the Kind's rejection is final.
+- **Composition ref is a REQUIRED kind parameter** (settled): `Struct(ref)` /
+  `StructSlice(ref)` take the nested `*Definition` at the constructor —
+  compile-visible; `RefKind` exposes it to consumers (ormc, orm relations).
+  `Field.Ref` keeps its ONLY remaining meaning: scalar foreign key (optional
+  relational metadata driving DDL FK constraints; the Go type stays scalar).
+  Why: the previous two-meaning `Ref` disambiguated by `Type` was the same
+  correlated-slots disease as `Type`+`Widget`. `Struct(nil)` cannot be
+  rejected by the compiler; the fail-closed backstop is `Validate` returning
+  "ref required", and ormc hard-errors at generation.
 
 ### OWASP Scope
 

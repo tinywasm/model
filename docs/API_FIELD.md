@@ -171,8 +171,8 @@ handle it explicitly.
 | `FieldBool` | `bool` |
 | `FieldBlob` | `[]byte` |
 | `FieldIntSlice` | `[]int` |
-| `FieldStruct` | type of `Ref` (required) |
-| `FieldStructSlice` | `[]` of type of `Ref` (required) |
+| `FieldStruct` | type of the kind's ref — `Struct(ref)` |
+| `FieldStructSlice` | `[]` of the kind's ref — `StructSlice(ref)` |
 
 ## FieldDB
 
