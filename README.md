@@ -37,9 +37,10 @@ The source of truth for a model is a `model.Definition` literal. This package us
 var UserModel = model.Definition{
     Name: "user",
     Fields: model.Fields{
-        {Name: "id",    Type: model.Int(),  DB: &model.FieldDB{PK: true, AutoInc: true}},
-        {Name: "name",  Type: model.Text(), NotNull: true, Permitted: model.Permitted{Minimum: 2}},
-        {Name: "email", Type: model.Text(), NotNull: true},
+        {Name: "id",      Type: model.Int(),  DB: &model.FieldDB{PK: true, AutoInc: true}},
+        {Name: "name",    Type: model.Text(), NotNull: true, Permitted: model.Permitted{Minimum: 2}},
+        {Name: "email",   Type: model.Text(), NotNull: true},
+        {Name: "address", Type: model.Struct(&AddressModel)}, // composition
     },
 }
 ```

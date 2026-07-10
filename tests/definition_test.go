@@ -46,11 +46,11 @@ func TestDefinition(t *testing.T) {
 	}
 	_ = fields
 
-	// Assert that Field{Type: FieldStruct, Ref: &SomeModel} preserves the Ref pointer
+	// Assert that Kind Struct(ref) preserves the Ref pointer
 	SomeModel := &model.Definition{Name: "some"}
-	fStruct := model.Field{Name: "nested", Type: model.Struct(), Ref: SomeModel}
-	if fStruct.Ref != SomeModel {
-		t.Error("Ref pointer not preserved")
+	fStruct := model.Field{Name: "nested", Type: model.Struct(SomeModel)}
+	if rk, ok := fStruct.Type.(model.RefKind); !ok || rk.Ref() != SomeModel {
+		t.Error("Ref pointer not preserved in Kind")
 	}
 
 	// Assert that the zero-value of Ref is nil

@@ -53,7 +53,8 @@ duplicación de escribir *struct + tags*. Lo confirmado del resto del refactor:
 - **Kind:** replaces the old `FieldType` enum + `Widget` pair. It is an interface
   providing both the storage mapping (`Storage()`) and the semantic validation baseline
   (`Validate()`). standard Kinds like `Text()`, `Int()` provide an input-boundary
-  XSS floor by default.
+  XSS floor by default. Composition kinds (`Struct`, `StructSlice`) are parameterized
+  with the nested `Definition`, eliminating the overloaded `Field.Ref` slot.
 
 ---
 
