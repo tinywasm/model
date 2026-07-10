@@ -122,6 +122,13 @@ func (f Field) IsAutoInc() bool { return f.DB != nil && f.DB.AutoInc }
 // characters. ValidateFields provides implicit fail-closed protection for
 // form-submitted data. Data from external sources (DB reads, API responses)
 // bypasses this check and must be encoded at the output layer.
+//
+// The base Text kind's charset is a DEFAULT floor, not a mandate: a field
+// that declares its own positive whitelist (Letters/Numbers/Extra/...)
+// REPLACES it — the author's explicit charset governs (e.g. a CSS-selector
+// field permitting '#'). The author then owns the XSS exposure of any
+// dangerous character it whitelists (encode at the output layer). Semantic
+// kinds (email, ...) and non-text kinds (Int, Float, Bool) always validate.
 func (f Field) Validate(value string) error {
 	if f.NotNull && value == "" {
 		return fmt.Err(f.Name, "required")
@@ -134,9 +141,14 @@ func (f Field) Validate(value string) error {
 		return fmt.Err(f.Name, "kind required")
 	}
 
-	// Baseline kind validation
-	if err := f.Type.Validate(value); err != nil {
-		return fmt.Err(f.Name, err)
+	// Baseline kind validation — skipped only when the field declares its
+	// own positive whitelist AND the kind is the base Text kind (its floor
+	// is a default; an explicit field charset replaces it).
+	skipKindFloor := f.hasPositiveCharRules() && f.Type.Name() == fieldTypeNames[FieldText]
+	if !skipKindFloor {
+		if err := f.Type.Validate(value); err != nil {
+			return fmt.Err(f.Name, err)
+		}
 	}
 
 	// Always check length if configured, regardless of character rules
@@ -155,9 +167,16 @@ func (f Field) Validate(value string) error {
 
 // hasPermittedRules returns true if any character-based Permitted field is non-zero.
 func (f Field) hasPermittedRules() bool {
-	return f.Letters || f.Tilde || f.Numbers || f.Spaces ||
-		f.BreakLine || f.Tab || len(f.Extra) > 0 ||
+	return f.hasPositiveCharRules() ||
 		len(f.NotAllowed) > 0 || f.StartWith != nil
+}
+
+// hasPositiveCharRules returns true if the field declares an explicit
+// character whitelist. NotAllowed/StartWith alone don't count: they
+// restrict, they don't define a charset — so they never lift the kind floor.
+func (f Field) hasPositiveCharRules() bool {
+	return f.Letters || f.Tilde || f.Numbers || f.Spaces ||
+		f.BreakLine || f.Tab || len(f.Extra) > 0
 }
 
 // CRUD action bytes — the single source of truth for the ecosystem-wide

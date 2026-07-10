@@ -221,10 +221,23 @@ was opt-in (`Widget: nil` meant no validation).
   validation. Keeping it on `Field` allows better authoring ergonomics in
   composite literals and is consumed by DDL, codec, and form layers.
 - **Permitted's dual role**: It serves as the engine inside Kinds for baseline
-  rules and remains on `Field` for per-usage tightening.
-- **Monotonic Composition**: Validation follows the order `NotNull` → `Kind` →
-  `Permitted`. A field's `Permitted` rules can only TIGHTEN the constraints;
-  the Kind's rejection is final.
+  rules and remains on `Field` for per-usage rules.
+- **The base Text floor is a DEFAULT, not a mandate** (settled 2026-07-10):
+  validation follows `NotNull` → `Kind` → `Permitted`, but when the field
+  declares its own POSITIVE whitelist (`Letters`/`Numbers`/`Extra`/…) and the
+  kind is the base `Text()`, the field's explicit charset REPLACES the kind
+  floor — the author governs (e.g. a CSS-selector field permitting `#`, a SQL
+  field permitting quotes) and owns the output-encoding duty for any dangerous
+  character it whitelists. Restrictive-only rules (`NotAllowed`, `StartWith`)
+  never lift the floor, and semantic kinds (`input.Email()`, …) plus non-text
+  kinds (`Int`, `Float`, `Bool`) ALWAYS validate — only the generic default is
+  overridable. Why: without this, a field whose content is machine-interpreted
+  (selector/JS/URL/SQL) had no legitimate constructor — `Raw()` means
+  pre-serialized JSON — which pushed consumers toward a new `Opaque()` kind;
+  an explicit per-field whitelist keeps the API surface unchanged and the
+  decision visible at the definition site (regression: `TestFieldValidate_
+  ExplicitWhitelistReplacesTextFloor`, bug proof: devbrowser `#btn` selectors,
+  `tests/kind_permitted_override_test.go`).
 - **Composition ref is a REQUIRED kind parameter** (settled): `Struct(ref)` /
   `StructSlice(ref)` take the nested `*Definition` at the constructor —
   compile-visible; `RefKind` exposes it to consumers (ormc, orm relations).

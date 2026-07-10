@@ -87,16 +87,48 @@ func TestFieldValidate_FailClosed(t *testing.T) {
 	}
 }
 
-// Monotonic composition invariant: field rules can only TIGHTEN the kind.
-func TestFieldValidate_MonotonicInvariant(t *testing.T) {
+// Contract (settled 2026-07-10): the base Text kind's charset is a DEFAULT
+// floor. A field declaring its own positive whitelist REPLACES it — the
+// author's explicit charset governs and the author owns the output-encoding
+// duty for any dangerous character it whitelists.
+func TestFieldValidate_ExplicitWhitelistReplacesTextFloor(t *testing.T) {
 	f := Field{
 		Name:      "x",
 		Type:      Text(),
-		Permitted: Permitted{Extra: []rune{'<'}}, // Try to allow '<' which Text() rejects
+		Permitted: Permitted{Extra: []rune{'<'}}, // author explicitly allows '<'
 	}
-	// Kind rejects it first; Permitted.Extra cannot re-allow it.
+	if err := f.Validate("<"); err != nil {
+		t.Errorf("explicit field whitelist must replace the Text() floor, got %v", err)
+	}
+	// ...and the explicit whitelist still governs in the other direction:
+	// anything NOT listed keeps failing ('a' is not in Extra{'<'}).
+	if err := f.Validate("a"); err == nil {
+		t.Error("chars outside the explicit field whitelist must fail")
+	}
+}
+
+// The floor is only lifted for the BASE Text kind and only by a POSITIVE
+// whitelist: restrictive-only rules (NotAllowed) and non-text kinds keep
+// the kind validation intact.
+func TestFieldValidate_FloorKeptWithoutPositiveWhitelist(t *testing.T) {
+	// NotAllowed alone is not a whitelist — Text() floor still applies.
+	f := Field{
+		Name:      "x",
+		Type:      Text(),
+		Permitted: Permitted{NotAllowed: []string{"admin"}},
+	}
 	if err := f.Validate("<"); err == nil {
-		t.Error("field Permitted should not be able to re-allow characters rejected by the Kind")
+		t.Error("NotAllowed alone must not lift the Text() charset floor")
+	}
+
+	// Non-text kind: positive rules never skip the kind's format validation.
+	n := Field{
+		Name:      "n",
+		Type:      Int(),
+		Permitted: Permitted{Letters: true},
+	}
+	if err := n.Validate("abc"); err == nil {
+		t.Error("Int() format validation must run regardless of field char rules")
 	}
 }
 
