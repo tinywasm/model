@@ -17,6 +17,36 @@ import "github.com/tinywasm/fmt"
 // free to whoever needs it. Nothing here decides WHO may do WHAT: that is policy, and
 // policy belongs to the consumer, written in the consumer's own code.
 
+// Access declares who may reach something — a route, a tool, anything an enforcer guards.
+//
+// It lives here, not in router or mcp, because BOTH already express these same three states
+// and would otherwise each invent their own vocabulary for one idea. router encoded them
+// implicitly, as combinations of (Public bool, Resource ""), which made an illegal state
+// writable: a route could be marked Public AND carry a Requires, and the enforcer silently
+// dropped the permission check. One declared value cannot contradict itself.
+type Access uint8
+
+const (
+	// AccessGuarded (THE ZERO VALUE) requires an identity AND a permission on its Resource.
+	//
+	// The default is the strictest state on purpose: something that declares nothing must be
+	// unreachable, not quietly open to anyone who happens to be logged in. An enforcer must
+	// REJECT a guarded thing with no Resource at registration — loudly, at startup — because
+	// authorizing against an empty resource denies every call while looking protected.
+	AccessGuarded Access = iota
+
+	// AccessAuthenticated requires an identity but checks no Resource. It is for operations on
+	// the CALLER themselves ("who am I?"), where authentication already IS the check.
+	//
+	// Without this state, a `me` tool had to invent a resource ("profile") the app never
+	// declared — a hole in the contract turning into policy inside a library.
+	AccessAuthenticated
+
+	// AccessPublic is reachable with no identity at all: static assets, a login page.
+	// The rarest case, and the one that must be written on purpose.
+	AccessPublic
+)
+
 // Resource is the thing being protected: "service_catalog", "invoices".
 // The consumer declares its own — a library that enforces access must never invent one.
 type Resource string

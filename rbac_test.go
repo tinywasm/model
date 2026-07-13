@@ -11,6 +11,18 @@ const (
 	resInvoice Resource = "invoices"
 )
 
+// El zero value de Access es el estado MÁS estricto. Algo que no declara nada debe quedar
+// inalcanzable — no abierto a cualquiera que resulte estar logueado.
+func TestAccessZeroValueIsGuarded(t *testing.T) {
+	var a Access
+	if a != AccessGuarded {
+		t.Errorf("el zero value de Access es %d; debe ser AccessGuarded (identidad + permiso)", a)
+	}
+	if AccessGuarded == AccessPublic || AccessGuarded == AccessAuthenticated {
+		t.Error("los tres estados deben ser distintos")
+	}
+}
+
 // Lo que este vocabulario promete: nada se concede si nadie lo dijo.
 func TestClosedByDefault(t *testing.T) {
 	t.Run("un Grant vacío no concede nada", func(t *testing.T) {
