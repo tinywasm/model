@@ -117,6 +117,63 @@ func TestResourceOfIsTheModuleIdentity(t *testing.T) {
 	}
 }
 
+// El tipo es numérico porque SOLO un tipo numérico cierra el conjunto de verbos: con un
+// `type Action string`, `Requires("orders", "write")` sigue compilando — un verbo inventado
+// que nadie enforza (el bug real que había en el test de router).
+//
+// Pero un 6 en una columna de la base de datos es ilegible. Por eso lo que se GUARDA y se
+// LOGUEA son las letras de siempre. Representación y almacenamiento son dos preguntas
+// distintas, y este es el único sitio donde se encuentran.
+func TestActionRoundTripsAsLetters(t *testing.T) {
+	tests := []struct {
+		action Action
+		text   string
+	}{
+		{0, ""},
+		{Read, "r"},
+		{Create, "c"},
+		{Read | Update, "ru"},
+		{AllActions, "crud"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.text, func(t *testing.T) {
+			if got := tt.action.String(); got != tt.text {
+				t.Errorf("String() = %q; se esperaba %q — la base de datos debe ser legible", got, tt.text)
+			}
+			back, err := ParseAction(tt.text)
+			if err != nil {
+				t.Fatalf("ParseAction(%q): %v", tt.text, err)
+			}
+			if back != tt.action {
+				t.Errorf("ida y vuelta rota: %q → %d; se esperaba %d", tt.text, back, tt.action)
+			}
+		})
+	}
+}
+
+func TestParseActionIgnoresOrder(t *testing.T) {
+	a, err := ParseAction("ur")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a != Read|Update {
+		t.Errorf("ParseAction(\"ur\") = %d; el orden de las letras no debe importar", a)
+	}
+}
+
+// Una letra desconocida falla RUIDOSAMENTE. Si devolviera cero en silencio, una fila de
+// permisos corrupta ("raed") se leería como "sin permisos" y podría re-guardarse así,
+// borrando el permiso de verdad sin que nadie viera un error.
+func TestParseActionRejectsUnknownVerb(t *testing.T) {
+	if _, err := ParseAction("raed"); err == nil {
+		t.Fatal("una letra desconocida se tragó en silencio")
+	}
+	if _, err := ParseAction("x"); err == nil {
+		t.Fatal("se aceptó un verbo que no existe")
+	}
+}
+
 func TestAllowedDelegates(t *testing.T) {
 	var gotUser string
 	auth := Authorizer(func(userID string, r Resource, a Action) bool {
