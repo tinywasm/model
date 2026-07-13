@@ -278,6 +278,19 @@ build-time, donde reflect sí está permitido) en vez de **parsear el AST** como
 
 El mecanismo actual no solo sirve: es el correcto para un generador que vive dentro del tooling.
 
+**Matiz asentado 2026-07-10 (resolución de `Storage()` en ormc):** la prohibición anterior aplica al
+**paquete del usuario** (el que ormc está generando), no a los paquetes **dependencia** donde viven
+los kinds (`tinywasm/form/input`, kinds custom en su propio paquete) — esos siempre compilan porque
+son requires ordinarios del módulo escaneado. Por eso ormc resuelve el storage de los kinds
+no-`model` generando un *probe* `main` temporal que importa solo esos paquetes, ejecuta cada
+constructor capturado por AST y lee el `Storage()` real (cacheado por hash de `go.mod` + set de
+constructores). Se evaluaron y DESCARTARON dos alternativas: la directiva `//ormc:storage`
+(comentario = prosa que el compilador no verifica, duplica `Storage()` y puede contradecirlo —
+viola `ARNES_DE_CONSTRUCCION.md`) y los storage markers embebidos (API nueva en model + walk AST
+heurístico en ormc). Consecuencia de diseño: un kind custom debe vivir en un paquete separado de
+las Definitions que lo usan (si no, el probe reintroduce el huevo-y-gallina → error ruidoso de
+generación).
+
 ---
 
 ## 9. Consecuencia para los PLAN.md por librería

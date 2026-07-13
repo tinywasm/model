@@ -41,5 +41,5 @@ semánticos (email…) y no-text (Int/Float/Bool) validan SIEMPRE.
 | Repo | Cambio |
 |------|--------|
 | `devbrowser` | selector/script/url/filter/value: `Type: model.Text()` + `Permitted` con su charset explícito (su `docs/PLAN.md` etapa 1) |
-| `ormcp` | campo `SQL`: ídem, whitelist SQL explícita, en su pasada Kind (paso 4 roadmap) |
+| `sqlmcp` | campo `SQL`: ídem, whitelist SQL explícita, en su pasada Kind (paso 4 roadmap) |
 | `ormc` | NADA — no hay kind nuevo; la tabla builtin de fase B queda como estaba |
