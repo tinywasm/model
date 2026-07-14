@@ -62,6 +62,24 @@ func (m *User) EncodeFields(w model.FieldWriter) {
 Más rápido y 0-alloc (no se evalúa metadata en runtime). El directivo sigue declarándose en el
 tag; `ormc` lo conoce.
 
+## Qué tipo nombrar en una frontera
+
+`model.Model` es el registro de dominio completo que `ormc` genera siempre (las cinco
+capacidades juntas: `ModelName`, `Schema`+`Pointers`, `EncodeFields`, `DecodeFields`). Es
+**el** tipo a nombrar cuando una frontera maneja un registro completo. Un consumidor **nunca**
+declara la intersección de dos átomos en su propio repo (`type X interface { model.Fielder;
+model.Encodable }`): si le falta un contrato en una frontera, el defecto está aquí, en
+`model` — no en el consumidor.
+
+| La frontera maneja… | Nómbralo |
+|---|---|
+| un registro de dominio completo (form, CRUD, transporte, ORM) | `model.Model` |
+| solo escritura al cable (un `FieldWriter`) | `model.Encodable` |
+| solo lectura del cable | `model.Decodable` |
+| solo el esquema y los punteros (validación, sync) | `model.Fielder` |
+| esquema + validación (input de usuario) | `model.SafeFields` |
+| solo la identidad (rutas, nav, recurso RBAC) | `model.ModuleNaming` |
+
 ## Referencias
 
 - Contrato del codec: `docs/API_CODEC.md` (interfaces `FieldWriter`/`FieldReader`/`Encodable`/

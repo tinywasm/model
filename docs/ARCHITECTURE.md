@@ -286,7 +286,7 @@ no-`model` generando un *probe* `main` temporal que importa solo esos paquetes, 
 constructor capturado por AST y lee el `Storage()` real (cacheado por hash de `go.mod` + set de
 constructores). Se evaluaron y DESCARTARON dos alternativas: la directiva `//ormc:storage`
 (comentario = prosa que el compilador no verifica, duplica `Storage()` y puede contradecirlo —
-viola `ARNES_DE_CONSTRUCCION.md`) y los storage markers embebidos (API nueva en model + walk AST
+viola `CONSTRUCTION_HARNESS.md`) y los storage markers embebidos (API nueva en model + walk AST
 heurístico en ormc). Consecuencia de diseño: un kind custom debe vivir en un paquete separado de
 las Definitions que lo usan (si no, el probe reintroduce el huevo-y-gallina → error ruidoso de
 generación).
@@ -306,3 +306,40 @@ Si se confirma **Opción A**:
   concreto + `Schema/Pointers/codec/List`.
 - **json / form:** consumen el mismo `Fielder`; cambian su *entrada de definición*, no el hot path.
 - **postgres:** consume `Schema()` igual; revisar introspección/DDL contra los nuevos Kinds.
+
+## 10. Qué tipo nombrar en una frontera (`model.Model` = contrato completo)
+
+**Decisión (2026-07-14, ola CRUD Harness):** `ormc` genera **siempre** las mismas cinco
+capacidades juntas para todo modelo (`ModelName`, `Schema`+`Pointers`, `EncodeFields`,
+`DecodeFields`; `Validate` es un eje aparte, ver abajo). Hasta esta fecha `model.Model` solo
+nombraba dos de esas cinco (`Fielder` + `ModuleNaming`), así que ninguna frontera que
+necesitara serializar el registro (un layout CRUD, un `router.Caller`) tenía un tipo que
+nombrar — el consumidor se veía obligado a declarar la intersección **en su propio repo**:
+
+```go
+// deuda por construcción: sombrea model.Model con un contrato distinto e incompleto
+type Model interface { model.Fielder; model.Encodable }
+```
+
+Eso viola el arnés de construcción
+(https://github.com/tinywasm/app/blob/main/docs/CONSTRUCTION_HARNESS.md): un hueco de API
+descubierto en el repo hoja, donde el consumidor no tiene autoridad para publicar aguas
+arriba, así que parchea localmente — y ese parche nunca se puede reutilizar.
+
+**`model.Model` pasa a ser el contrato completo:**
+
+```go
+type Model interface {
+	Fielder      // Schema() + Pointers()
+	ModuleNaming // ModelName()
+	Encodable    // EncodeFields() + IsNil()
+	Decodable    // DecodeFields() + IsNil()
+}
+```
+
+`Validator` **NO** entra: es un eje distinto (seguridad del input, no "ser un registro") y ya
+tiene su combinación propia, `SafeFields` (`Fielder` + `Validator`), que no cambia.
+
+Tabla de qué nombrar en cada frontera, y detalle del codec: `docs/CODEC_AND_FIELDER.md`.
+**Regla:** un consumidor nunca declara la intersección de dos átomos de este paquete; si le
+falta un contrato en una frontera, el defecto está aquí, no en el consumidor.

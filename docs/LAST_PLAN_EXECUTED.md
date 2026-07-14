@@ -1,45 +1,43 @@
-# PLAN (EJECUTADO 2026-07-10, LOCAL) — model: la whitelist explícita del Field reemplaza el piso del kind Text()
+# PLAN (EJECUTADO 2026-07-14, LOCAL) — `model.Model` pasa a ser el contrato completo
 
-> Ejecutado directamente por el mantenedor (LOCAL, sin codejob).
-> Decisión tomada tras probar el bug con test y descartar la alternativa
-> `model.Opaque()` (rechazada: ensuciaba la API con un kind nuevo cuando
-> `Permitted` ya expresa la intención).
+> Ejecutado directamente por el mantenedor (LOCAL, sin codejob). Fase A (gate) de la ola CRUD
+> Harness: https://github.com/tinywasm/app/blob/main/docs/CRUD_HARNESS_MASTER_PLAN.md
 
-## Bug (probado con test antes de decidir)
+## El problema
 
-devbrowser (tests reales chromedp): `Field{Type: model.Text(), Permitted:
-Permitted{Extra: []rune("#")}}` rechazaba `"#btn"` con "character not
-allowed #". Causa: `Field.Validate` corría el piso del kind PRIMERO e
-incondicionalmente; el `Permitted` del Field solo podía endurecer, nunca
-extender. Campos con contenido interpretado por máquina (selector CSS, JS,
-URL, SQL) no tenían constructor legítimo.
+`ormc` genera **siempre** las mismas capacidades juntas para todo modelo (`ModelName`,
+`Schema`+`Pointers`, `EncodeFields`, `DecodeFields`, `Validate`). Pero `model` las publicaba
+como átomos sueltos y solo nombraba dos combinaciones (`Model` = `Fielder`+`ModuleNaming`,
+`SafeFields` = `Fielder`+`Validator`). **Nunca se nombró el registro de dominio completo.**
 
-Prueba: `tests/kind_permitted_override_test.go` (quedó como regresión).
+Consecuencia medida aguas abajo: un layout CRUD (`tinywasm/layout/crudview`, en
+`veltylabs/mjosefa-cms`) necesita `Fielder` (generar el form), `Encodable` (mandar el registro
+por `router.Caller`) y `Decodable` (recibirlo). Como ese tipo no existía, el consumidor se
+inventó la intersección en su propio repo — deuda por construcción, tercera reincidencia del
+mismo patrón (antes: wrapper `mcpPublic`, wrapper `AuthModule`).
 
-## Decisión (mantenedor, 2026-07-10)
+## Decisión
 
-El piso de `Text()` es un DEFAULT: si el Field declara una whitelist
-POSITIVA propia (`Letters`/`Numbers`/`Spaces`/`Extra`/…) y el kind es el
-`Text()` base, la whitelist explícita del autor gobierna (reemplaza el piso)
-y el autor asume el encoding de salida de lo que permita. Reglas solo
-restrictivas (`NotAllowed`, `StartWith`) NO levantan el piso. Kinds
-semánticos (email…) y no-text (Int/Float/Bool) validan SIEMPRE.
+`model.Model` pasa a ser el contrato completo: `Fielder` + `ModuleNaming` + `Encodable` +
+`Decodable`. `Validator` NO entra (eje distinto, ya tiene `SafeFields`).
 
 ## Cambios ejecutados
 
 | Archivo | Cambio |
 |---|---|
-| `field.go` | `Field.Validate`: salta el piso del kind solo si `hasPositiveCharRules() && f.Type.Name() == fieldTypeNames[FieldText]`; helper nuevo `hasPositiveCharRules()` (whitelist positiva, sin `NotAllowed`/`StartWith`); `hasPermittedRules()` reescrito sobre él; doc del contrato en el comentario |
-| `tests/kind_permitted_override_test.go` | nuevo — prueba del bug como regresión (selector CSS `#btn`, control de rechazo de lo no listado) |
-| `tests/field_test.go` | `TestFieldValidate_MonotonicInvariant` (contrato viejo) → `TestFieldValidate_ExplicitWhitelistReplacesTextFloor` + `TestFieldValidate_FloorKeptWithoutPositiveWhitelist` |
-| `docs/ARCHITECTURE.md` §8 | "Monotonic Composition" reemplazado por el contrato nuevo con rationale |
+| `interface.go` | `Model` ampliado a `Fielder + ModuleNaming + Encodable + Decodable` |
+| `tests/interface_test.go` | nuevo — `modelStub` con la forma exacta de la salida de `ormc` + `var _ model.Model = (*modelStub)(nil)` |
+| `docs/CODEC_AND_FIELDER.md` | sección "Qué tipo nombrar en una frontera" + tabla |
+| `docs/ARCHITECTURE.md` §10 | nueva: decisión, contrato final, regla anti-intersección |
 
-`gotest ./...` verde. Publicado con gopush.
+`gotest ./...` verde. Publicado con gopush como v0.0.14.
 
 ## Consumidores (planes en sus repos)
 
-| Repo | Cambio |
-|------|--------|
-| `devbrowser` | selector/script/url/filter/value: `Type: model.Text()` + `Permitted` con su charset explícito (su `docs/PLAN.md` etapa 1) |
-| `sqlmcp` | campo `SQL`: ídem, whitelist SQL explícita, en su pasada Kind (paso 4 roadmap) |
-| `ormc` | NADA — no hay kind nuevo; la tabla builtin de fase B queda como estaba |
+| Repo | Plan |
+|---|---|
+| `tinywasm/form` | `docs/PLAN.md` — `LoadValues` + `New` falla si no vincula ni un input |
+| `tinywasm/layout` | `docs/PLAN.md` — `crudview.New(Config)` + test de consumidor |
+| `tinywasm/orm`, `ormc`, `user`, `sqlite` | recompilado contra v0.0.14 (código generado, no reescritura) |
+| `veltylabs/modules/service_catalog` | `docs/PLAN.md` — el Kind es el widget |
+| `veltylabs/mjosefa-cms` | `docs/PLAN.md` — fases C y D, última de la ola |
