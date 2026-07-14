@@ -47,6 +47,23 @@ const (
 	AccessPublic
 )
 
+// String renders the access level as a word.
+//
+// It exists because the NUMBER is actively misleading wherever a human or an agent reads
+// it: the zero value is AccessGuarded, so the most protected route serializes as `0` —
+// which any reader takes for "nothing declared", i.e. the opposite of the truth. A routes
+// endpoint or a log line that reports the posture of a server must not invert it.
+func (a Access) String() string {
+	switch a {
+	case AccessAuthenticated:
+		return "authenticated"
+	case AccessPublic:
+		return "public"
+	default:
+		return "guarded"
+	}
+}
+
 // Resource is the thing being protected: "service_catalog", "invoices".
 // The consumer declares its own — a library that enforces access must never invent one.
 type Resource string

@@ -203,3 +203,29 @@ func TestAllowedDelegates(t *testing.T) {
 		t.Error("Allowed concedió lo que el Authorizer negó")
 	}
 }
+
+// The number is misleading wherever a human or an agent reads it: the zero value is
+// AccessGuarded, so the most protected route serializes as `0` — which reads as "nothing
+// declared", the exact opposite of the truth. A routes endpoint that reports the security
+// posture of a server must not invert it.
+func TestAccessRendersAsAWordNotANumber(t *testing.T) {
+	cases := []struct {
+		access Access
+		want   string
+	}{
+		{AccessGuarded, "guarded"},
+		{AccessAuthenticated, "authenticated"},
+		{AccessPublic, "public"},
+	}
+	for _, c := range cases {
+		if got := c.access.String(); got != c.want {
+			t.Errorf("Access(%d).String() = %q, want %q", c.access, got, c.want)
+		}
+	}
+
+	// The zero value must read as the strict state, never as "unset".
+	var zero Access
+	if zero.String() != "guarded" {
+		t.Errorf("the zero value renders as %q: a reader would take it for 'nothing declared'", zero.String())
+	}
+}
