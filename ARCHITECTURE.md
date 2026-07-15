@@ -19,6 +19,7 @@ The `model` package provides the foundational types and interfaces for the tinyw
 | **Encodable, Decodable** | Typed serialization contract | json, jsvalue |
 | **FieldWriter, FieldReader** | 0-alloc codec interface | json, jsvalue |
 | **Widget** | Semantic input type contract | form (input generation) |
+| **IDGenerator** | Identity-generation contract (mint a new PK) — no concrete generator hardcoded in a reusable module | domain modules (via injected `Deps`), unixid (implements it) |
 
 ### tinywasm/fmt (Refactored)
 

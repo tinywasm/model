@@ -62,3 +62,17 @@ type SafeFields interface {
 	Fielder
 	Validator
 }
+
+// IDGenerator mints a new primary-key value for a record about to be created.
+// It is THE contract to name at any boundary that needs identity generation — a
+// domain module creating a record, a composition root wiring one in. Consumers
+// MUST NOT construct a concrete generator (e.g. unixid.NewUnixID) inside a
+// reusable module: that hardcodes an implementation the module should not know
+// about. Accept IDGenerator instead and let the composition root inject it.
+//
+// Implementations: github.com/tinywasm/unixid (time-sortable, collision-safe
+// under concurrent callers). A test double can be a func literal satisfying
+// this single-method interface.
+type IDGenerator interface {
+	NewID() string
+}

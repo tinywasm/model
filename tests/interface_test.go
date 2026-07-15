@@ -14,3 +14,12 @@ func (m *modelStub) EncodeFields(w model.FieldWriter) {}
 func (m *modelStub) DecodeFields(r model.FieldReader) {}
 
 var _ model.Model = (*modelStub)(nil)
+
+// idGeneratorFunc adapts a plain function to model.IDGenerator — the shape a
+// composition root's test double takes: no concrete generator, just the
+// single method a consumer needs.
+type idGeneratorFunc func() string
+
+func (f idGeneratorFunc) NewID() string { return f() }
+
+var _ model.IDGenerator = idGeneratorFunc(nil)
