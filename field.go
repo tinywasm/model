@@ -85,7 +85,7 @@ type Field struct {
 	DB        *FieldDB // nil for formonly/transport structs
 	// Ref is the Definition of the table this column references (scalar foreign key).
 	// e.g. a "staff_id int64" field pointing to StaffModel. It drives DDL FK constraint
-	// generation (orm.FieldExt/SchemaExt) — see FieldDB.RefColumn/OnDelete.
+	// generation (FieldExt/SchemaExt) — see FieldDB.RefColumn/OnDelete.
 	// It does NOT change the field's Go type, which stays the plain scalar mapping from Type.
 	//
 	// Composition (FieldStruct/FieldStructSlice) no longer uses this slot; the nested
