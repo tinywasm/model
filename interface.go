@@ -55,6 +55,15 @@ type Model interface {
 	Decodable    // DecodeFields() + IsNil() → from the wire
 }
 
+// ModelSlice is the wire-decodable counterpart of FielderSlice: a list result a
+// Caller can decode a Call response into, row by row. It is THE type to name at any
+// boundary that lists domain records over the wire (a Presenter's list operation, a
+// Caller consumer) — do not declare a local intersection of FielderSlice+Decodable.
+type ModelSlice interface {
+	FielderSlice
+	Decodable
+}
+
 // SafeFields combines schema access with validation.
 // Handlers that receive user input should accept SafeFields
 // to enforce compile-time validation guarantees.
