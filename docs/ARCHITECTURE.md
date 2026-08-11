@@ -27,7 +27,7 @@ convención a `input.Email()`. Un typo no lo caza el compilador.
 > inglés/español, no colisiona con el `struct` generado ni con `Schema()`). **No hay paquete
 > `field`**: la `Definition` se escribe con literales `model.Field{...}` — exactamente lo que hoy
 > genera ormc como `_schemaX`. Los kinds salen de `model` (base, siempre validan) o de
-> `tinywasm/form/input` (decorados con UI); ver §8 «Validation design».
+> `tinywasm/tinywasm/input` (decorados con UI); ver §8 «Validation design».
 
 Invertimos la flecha: **lo que hoy es generado (`_schemaUser`) pasa a escribirse a mano, todo
 tipado**, y de ahí se genera lo demás:
@@ -280,7 +280,7 @@ El mecanismo actual no solo sirve: es el correcto para un generador que vive den
 
 **Matiz asentado 2026-07-10 (resolución de `Storage()` en ormc):** la prohibición anterior aplica al
 **paquete del usuario** (el que ormc está generando), no a los paquetes **dependencia** donde viven
-los kinds (`tinywasm/form/input`, kinds custom en su propio paquete) — esos siempre compilan porque
+los kinds (`tinywasm/tinywasm/input`, kinds custom en su propio paquete) — esos siempre compilan porque
 son requires ordinarios del módulo escaneado. Por eso ormc resuelve el storage de los kinds
 no-`model` generando un *probe* `main` temporal que importa solo esos paquetes, ejecuta cada
 constructor capturado por AST y lee el `Storage()` real (cacheado por hash de `go.mod` + set de
@@ -300,7 +300,7 @@ Si se confirma **Opción A**:
 - **model** (ancla): define `model.Definition{Name, Fields}` y `type Fields = []Field`; mantiene
   `Field` and `Kind` (interfaz). Cero dependencias. **No hay paquete `field`**: la `Definition` se
   escribe con literales `model.Field{...}`.
-- **widgets**: cualquier `model.Widget`. `tinywasm/form/input` (`input.Text()`, `input.Email()`, …)
+- **widgets**: cualquier `model.Widget`. `tinywasm/tinywasm/input` (`input.Text()`, `input.Email()`, …)
   es la fuente básica y **opcional**.
 - **orm/ormc:** invierte el generador — lee el literal `model.Definition` por AST y emite el struct
   concreto + `Schema/Pointers/codec/List`.
